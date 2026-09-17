@@ -19,8 +19,8 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
+      - name: Restore Windows x64
+        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64
 
       - name: Publish Windows x64
         run: >-
