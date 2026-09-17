@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.6";
+local VERSION = "0.4.7";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -16,6 +16,7 @@ local lastSaveWarning = -60;
 local saveInFlight = false;
 local inFlightFingerprint = nil;
 local queuedSave = nil;
+local unloading = false;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
 
@@ -206,6 +207,7 @@ local function fingerprint(data)
 end
 
 local savePluginData;
+local saveFinalInactiveSnapshot;
 savePluginData = function(data, currentFingerprint, now)
     if saveInFlight then
         if currentFingerprint ~= inFlightFingerprint then
@@ -240,6 +242,14 @@ savePluginData = function(data, currentFingerprint, now)
                     warnSave(completionNow, message);
                 end
 
+                if unloading then
+                    queuedSave = nil;
+                    if saveFinalInactiveSnapshot ~= nil then
+                        saveFinalInactiveSnapshot();
+                    end
+                    return;
+                end
+
                 local pending = queuedSave;
                 queuedSave = nil;
 
@@ -265,6 +275,10 @@ savePluginData = function(data, currentFingerprint, now)
 end
 
 local function saveSnapshot(forceHeartbeat, active)
+    if unloading then
+        return;
+    end
+
     local data = buildSnapshot(active);
     local currentFingerprint = fingerprint(data);
     local now = Turbine.Engine.GetGameTime();
@@ -274,13 +288,16 @@ local function saveSnapshot(forceHeartbeat, active)
     end
 end
 
-local function saveFinalInactiveSnapshot()
+saveFinalInactiveSnapshot = function()
+    unloading = true;
+    queuedSave = nil;
     local data = buildSnapshot(false);
     local now = safeCall(function() return Turbine.Engine.GetGameTime(); end, 0);
 
-    -- À l'Unload, on lance toujours la dernière écriture même si une sauvegarde
-    -- précédente attend encore son callback. Le plugin ne peut pas attendre
-    -- activement la fin d'une opération asynchrone pendant son déchargement.
+    -- À l'Unload, on lance toujours une écriture active=false. Si une sauvegarde
+    -- active plus ancienne termine ensuite et que son callback s'exécute encore,
+    -- celui-ci réaffirme immédiatement active=false afin de réduire la course
+    -- d'ordre entre les écritures asynchrones.
     local ok, callError = pcall(function()
         Turbine.PluginData.Save(
             Turbine.DataScope.Character,

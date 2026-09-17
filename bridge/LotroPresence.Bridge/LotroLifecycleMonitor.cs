@@ -19,6 +19,7 @@ internal static class LotroLifecycleMonitor
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ExitGrace = TimeSpan.FromSeconds(10);
     private static long sessionStartedUtcTicks;
+    private static int exitRequested;
 
     internal static DateTime? SessionStartedUtc
     {
@@ -30,6 +31,8 @@ internal static class LotroLifecycleMonitor
                 : new DateTime(ticks, DateTimeKind.Utc);
         }
     }
+
+    internal static bool ExitRequested => Volatile.Read(ref exitRequested) != 0;
 
     [ModuleInitializer]
     internal static void Start()
@@ -77,7 +80,7 @@ internal static class LotroLifecycleMonitor
 
                 if (DateTime.UtcNow - missingSinceUtc.Value >= ExitGrace)
                 {
-                    Environment.Exit(0);
+                    Volatile.Write(ref exitRequested, 1);
                     return;
                 }
             }

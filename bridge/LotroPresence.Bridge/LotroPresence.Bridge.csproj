@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
     <AssemblyName>LotroPresence</AssemblyName>
     <RootNamespace>LotroPresence.Bridge</RootNamespace>
+    <Version>0.4.7</Version>
+    <AssemblyVersion>0.4.7.0</AssemblyVersion>
+    <FileVersion>0.4.7.0</FileVersion>
+    <InformationalVersion>0.4.7-alpha</InformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 

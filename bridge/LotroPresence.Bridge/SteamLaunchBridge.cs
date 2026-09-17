@@ -91,9 +91,9 @@ internal static class SteamLaunchBridge
             {
                 @"C:\Games\LOTRO\LotroLauncher.exe",
                 "-skiprawdownload",
-                "-username",
-                "Test User",
-                "-password",
+                "--example-value",
+                "Test Value",
+                "--special-chars",
                 "q[P>+x&!^"
             };
 

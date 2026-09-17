@@ -103,7 +103,7 @@ internal static class Program
 
         try
         {
-            while (true)
+            while (!LotroLifecycleMonitor.ExitRequested)
             {
                 var nowUtc = DateTime.UtcNow;
                 var snapshot = ReadSelectedSnapshot(
@@ -160,6 +160,8 @@ internal static class Program
             discord.SetPresence(null);
             GC.KeepAlive(mutex);
         }
+
+        return 0;
     }
 
     private static PresenceSnapshot? ReadSelectedSnapshot(
@@ -204,22 +206,80 @@ internal static class Program
     {
         var localPath = Path.Combine(AppContext.BaseDirectory, "config.json");
         var defaultPath = Path.Combine(AppContext.BaseDirectory, "config.default.json");
-        var path = File.Exists(localPath) ? localPath : defaultPath;
 
         try
         {
-            if (!File.Exists(path))
+            if (!File.Exists(defaultPath))
             {
                 return null;
             }
 
-            return JsonSerializer.Deserialize<BridgeConfig>(
-                File.ReadAllText(path, Encoding.UTF8),
+            var config = JsonSerializer.Deserialize<BridgeConfig>(
+                File.ReadAllText(defaultPath, Encoding.UTF8),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (config is null)
+            {
+                return null;
+            }
+
+            if (!File.Exists(localPath))
+            {
+                return config;
+            }
+
+            using var localDocument = JsonDocument.Parse(
+                File.ReadAllText(localPath, Encoding.UTF8));
+            if (localDocument.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            ApplyConfigOverrides(config, localDocument.RootElement);
+            return config;
         }
         catch
         {
             return null;
+        }
+    }
+
+    private static void ApplyConfigOverrides(BridgeConfig config, JsonElement root)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Name.Equals("DiscordApplicationId", StringComparison.OrdinalIgnoreCase) &&
+                property.Value.ValueKind == JsonValueKind.String)
+            {
+                config.DiscordApplicationId = property.Value.GetString() ?? string.Empty;
+            }
+            else if (property.Name.Equals("LargeImageKey", StringComparison.OrdinalIgnoreCase) &&
+                     property.Value.ValueKind == JsonValueKind.String)
+            {
+                config.LargeImageKey = property.Value.GetString() ?? string.Empty;
+            }
+            else if (property.Name.Equals("LargeImageText", StringComparison.OrdinalIgnoreCase) &&
+                     property.Value.ValueKind == JsonValueKind.String)
+            {
+                config.LargeImageText = property.Value.GetString() ?? string.Empty;
+            }
+            else if (property.Name.Equals("HeartbeatTimeoutSeconds", StringComparison.OrdinalIgnoreCase) &&
+                     property.Value.ValueKind == JsonValueKind.Number &&
+                     property.Value.TryGetInt32(out var heartbeatTimeoutSeconds))
+            {
+                config.HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds;
+            }
+            else if (property.Name.Equals("PollIntervalMilliseconds", StringComparison.OrdinalIgnoreCase) &&
+                     property.Value.ValueKind == JsonValueKind.Number &&
+                     property.Value.TryGetInt32(out var pollIntervalMilliseconds))
+            {
+                config.PollIntervalMilliseconds = pollIntervalMilliseconds;
+            }
+            else if (property.Name.Equals("DiscoveryIntervalSeconds", StringComparison.OrdinalIgnoreCase) &&
+                     property.Value.ValueKind == JsonValueKind.Number &&
+                     property.Value.TryGetInt32(out var discoveryIntervalSeconds))
+            {
+                config.DiscoveryIntervalSeconds = discoveryIntervalSeconds;
+            }
         }
     }
 
@@ -232,9 +292,7 @@ internal static class Program
 
         try
         {
-            foreach (var file in Directory
-                         .EnumerateFiles(root, "LotroPresence.plugindata", SearchOption.AllDirectories)
-                         .Select(path => new FileInfo(path))
+            foreach (var file in EnumeratePluginDataFilesSafe(root)
                          .Where(file => IsFresh(file, timeoutSeconds))
                          .OrderByDescending(file => file.LastWriteTimeUtc))
             {
@@ -253,6 +311,70 @@ internal static class Program
         }
 
         return null;
+    }
+
+    private static IEnumerable<FileInfo> EnumeratePluginDataFilesSafe(string root)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(
+                    directory,
+                    "LotroPresence.plugindata",
+                    SearchOption.TopDirectoryOnly);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                yield return new FileInfo(file);
+            }
+
+            string[] subdirectories;
+            try
+            {
+                subdirectories = Directory.GetDirectories(directory);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var subdirectory in subdirectories)
+            {
+                try
+                {
+                    var attributes = File.GetAttributes(subdirectory);
+                    if ((attributes & FileAttributes.ReparsePoint) == 0)
+                    {
+                        pending.Push(subdirectory);
+                    }
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+        }
     }
 
     private static bool IsFresh(FileInfo file, int timeoutSeconds)
@@ -358,8 +480,7 @@ internal static class Program
         BridgeConfig config,
         DateTime sessionStart) => new()
     {
-        Details = "The Lord of the Rings Online",
-        State = "Sélection de personnage",
+        Details = "Sélection de personnage",
         Timestamps = new Timestamps { Start = sessionStart },
         Assets = BuildAssets(config, SelectionAssetKey, "Sélection de personnage")
     };
@@ -501,6 +622,15 @@ internal static class Program
             23, "Homme", 1, true, "Orcrist");
         var start = new DateTime(638000000000000000, DateTimeKind.Utc);
         var selection = BuildSelectionPresence(new BridgeConfig(), start);
+        var mergedConfig = new BridgeConfig
+        {
+            DiscordApplicationId = "default-app",
+            PollIntervalMilliseconds = 2000,
+            DiscoveryIntervalSeconds = 10
+        };
+        using var overrides = JsonDocument.Parse(
+            """{"PollIntervalMilliseconds":1500}""");
+        ApplyConfigOverrides(mergedConfig, overrides.RootElement);
 
         var ok =
             BuildDetails(beorning) == "Heimvald • Béornide • Niveau 28" &&
@@ -509,9 +639,13 @@ internal static class Program
             BuildDetails(champion) == "Altherian • Homme • Champion • Niveau 28" &&
             BuildState(champion) == "Solo • Serveur Orcrist" &&
             GetClassAssetKey(champion.ClassName) == "class_champion" &&
-            selection.State == "Sélection de personnage" &&
+            selection.Details == "Sélection de personnage" &&
+            string.IsNullOrWhiteSpace(selection.State) &&
             selection.Timestamps?.Start == start &&
-            selection.Assets?.SmallImageKey == SelectionAssetKey;
+            selection.Assets?.SmallImageKey == SelectionAssetKey &&
+            mergedConfig.DiscordApplicationId == "default-app" &&
+            mergedConfig.PollIntervalMilliseconds == 1500 &&
+            mergedConfig.DiscoveryIntervalSeconds == 10;
 
         Console.WriteLine(ok ? "Self-test LotroPresence : OK" : "Self-test LotroPresence : ECHEC");
         return ok ? 0 : 1;

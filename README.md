@@ -33,7 +33,7 @@ La zone n'est volontairement pas utilisée : l'API Lua LOTRO ne fournit pas une 
 
 ### Règle spéciale Béornide
 
-Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée sur la deuxième ligne.
+Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée sur la première ligne.
 
 ```text
 Heimvald • Béornide • Niveau 28
@@ -86,27 +86,28 @@ Pour démarrer LotroPresence automatiquement quand LOTRO est lancé depuis Steam
 Si des options LOTRO sont déjà présentes, les conserver après `%command%`. Exemple :
 
 ```text
-"F:\LotroPresence\LotroPresence.exe" --steam-launch %command% -skiprawdownload -username VOTRE_NOM -password VOTRE_MOT_DE_PASSE
+"F:\LotroPresence\LotroPresence.exe" --steam-launch %command% -skiprawdownload
 ```
 
 Le mode `--steam-launch` relance directement la commande LOTRO fournie par Steam, sans passer par `cmd.exe`. Les arguments sont transmis séparément, ce qui évite que des caractères spéciaux comme `>`, `&` ou `^` soient interprétés par un shell Windows.
 
-Attention : si un nom d'utilisateur ou un mot de passe est placé dans les options de lancement Steam, il reste visible en clair dans l'interface Steam. LotroPresence ne l'enregistre pas lui-même.
+Éviter de placer un nom d'utilisateur ou un mot de passe dans les options de lancement Steam : ces valeurs peuvent être visibles en clair dans Steam et dans la ligne de commande des processus concernés. LotroPresence n'a besoin d'aucun identifiant LOTRO pour fonctionner.
 
 `LotroPresence.exe` est compilé comme application Windows : aucune fenêtre de console permanente n'est affichée. Il reste visible dans le Gestionnaire des tâches.
 
 Le bridge attend d'avoir détecté le client LOTRO (`lotroclient64.exe` ou `lotroclient.exe`). Une fois LOTRO détecté :
 
-- l'écran de sélection affiche « Sélection de personnage » avec l'asset `character_select` ;
+- l'écran de sélection affiche « Sélection de personnage » avec l'asset `character_select`, sans répéter le nom de l'application Discord ;
+- cet état est déduit de « client LOTRO présent + aucun snapshot actif récent » : il ne lit pas la mémoire du jeu ;
 - changer de personnage conserve le même timer de session ;
 - fermer réellement LOTRO fait disparaître le processus du jeu ;
-- si le processus reste absent pendant environ 10 secondes, LotroPresence se ferme automatiquement.
+- si le processus reste absent pendant environ 10 secondes, LotroPresence demande une fermeture propre, efface la présence Discord puis se termine.
 
 ## Configuration
 
 `config.default.json` contient les valeurs distribuées avec l'application.
 
-Pour personnaliser localement la configuration, créer un `config.json` à côté de `LotroPresence.exe`. Ce fichier local est prioritaire et est ignoré par Git.
+Pour personnaliser localement la configuration, créer un `config.json` à côté de `LotroPresence.exe`. Ce fichier local est ignoré par Git et seules les clés qu'il contient remplacent les valeurs correspondantes de `config.default.json`.
 
 Paramètres principaux :
 
@@ -123,13 +124,15 @@ Le serveur n'est accepté que si `LotroPresence.plugindata` se trouve directemen
 
 Les écritures `PluginData` côté Lua utilisent le callback de `Turbine.PluginData.Save`. Le heartbeat et l'empreinte ne sont validés qu'après confirmation de la sauvegarde ; une erreur déclenche une nouvelle tentative automatique sans casser la boucle du plugin.
 
-Lors du déchargement du plugin, une écriture finale `active = false` est toujours demandée, même si une sauvegarde précédente attend encore son callback.
+Lors du déchargement du plugin, une écriture finale `active = false` est toujours demandée. Si une ancienne sauvegarde `active = true` termine ensuite et que son callback s'exécute encore, le plugin réaffirme `active = false` pour réduire la course entre écritures asynchrones.
 
 Si LOTRO retourne une classe ou une race inconnue, le plugin affiche une seule alerte avec l'ID concerné puis continue avec les informations disponibles.
 
 Le bridge conserve le fichier courant pour la lecture rapide, mais contrôle périodiquement les autres `LotroPresence.plugindata`. Cela permet de basculer vers un nouveau personnage actif sans attendre l'expiration de l'ancien fichier. Un fichier `active = false`, même plus récent, n'est jamais choisi comme présence.
 
 Une seule instance du bridge peut fonctionner à la fois. Si Steam relance LotroPresence alors qu'une instance existe déjà, la nouvelle instance peut tout de même lancer LOTRO puis s'arrête, tandis que l'instance déjà active continue de gérer Discord.
+
+Plusieurs clients LOTRO simultanés ne sont pas associés individuellement à un bridge : la présence suit le snapshot actif le plus récent. Cette configuration reste donc une limitation connue.
 
 ## Races et classes récentes
 
@@ -172,7 +175,7 @@ Les pushes ordinaires sur `main` et les pull requests construisent, testent et v
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release effectue dans **le même job** le restore verrouillé, la compilation, les self-tests, la création du ZIP, la validation de son contenu et de son SHA-256, puis publie exactement ce ZIP. Il ne dépend donc pas du stockage GitHub Actions Artifacts.
 
-Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.5-alpha` pour la version `0.4.4`). Seul ce job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.7-alpha` pour la version `0.4.7`). Seul ce job de release reçoit `contents: write`.
 
 Le workflow de publication ne remplace jamais les assets d'une release déjà existante. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
 
