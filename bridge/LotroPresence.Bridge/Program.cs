@@ -32,7 +32,7 @@ internal sealed record PresenceSnapshot(
 internal static class Program
 {
     private static readonly Regex EntryRegex = new(
-        @"\[\"\"(?<key>[^\"\"]+)\"\"\]\s*=\s*(?<value>\"\"(?:\\.|[^\"\"])*\"\"|true|false|-?\d+(?:\.\d+)?)",
+        """\["(?<key>[^"]+)"\]\s*=\s*(?<value>"(?:\\.|[^"])*"|true|false|-?\d+(?:\.\d+)?)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static async Task<int> Main()
@@ -229,7 +229,7 @@ internal static class Program
             }
 
             var characterDirectory = Directory.GetParent(path);
-            var serverName = characterDirectory?.Parent?.Name ?? string.Empty;
+            var serverName = characterDirectory?.Parent?.Parent?.Name ?? string.Empty;
 
             return new PresenceSnapshot(
                 path,
