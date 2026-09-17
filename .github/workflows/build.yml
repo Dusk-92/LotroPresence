@@ -41,12 +41,8 @@ jobs:
 
           Write-Host "Version source cohérente : $manifestVersion"
 
-      - name: Restore Windows x64
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --use-lock-file
-
-      - name: Show generated NuGet lock
-        shell: pwsh
-        run: Get-Content -Raw bridge/LotroPresence.Bridge/packages.lock.json
+      - name: Restore Windows x64 (locked)
+        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
 
       - name: Publish Windows x64
         run: >-
@@ -103,8 +99,8 @@ jobs:
             throw "Le tag $tag ne correspond pas à la version du plugin $pluginVersion."
           }
 
-      - name: Restore Windows x64
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --use-lock-file
+      - name: Restore Windows x64 (locked)
+        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
 
       - name: Publish Windows x64
         run: >-
