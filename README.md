@@ -79,10 +79,18 @@ L'application Discord du projet utilise par défaut l'Application ID public :
 Pour démarrer LotroPresence automatiquement quand LOTRO est lancé depuis Steam, ajouter dans **Steam > Bibliothèque > The Lord of the Rings Online > Propriétés > Options de lancement** :
 
 ```text
-cmd /c "start \"\" \"C:\CHEMIN\VERS\LotroPresence.exe\" & %command%"
+"C:\CHEMIN\VERS\LotroPresence.exe" --steam-launch %command%
 ```
 
-Adapter uniquement le chemin vers `LotroPresence.exe`.
+Si des options LOTRO sont déjà présentes, les conserver après `%command%`. Exemple :
+
+```text
+"F:\LotroPresence\LotroPresence.exe" --steam-launch %command% -skiprawdownload -username VOTRE_NOM -password VOTRE_MOT_DE_PASSE
+```
+
+Le mode `--steam-launch` relance directement la commande LOTRO fournie par Steam, sans passer par `cmd.exe`. Les arguments sont transmis séparément, ce qui évite que des caractères spéciaux comme `>`, `&` ou `^` soient interprétés par un shell Windows.
+
+Attention : si un nom d'utilisateur ou un mot de passe est placé dans les options de lancement Steam, il reste visible en clair dans l'interface Steam. LotroPresence ne l'enregistre pas lui-même.
 
 `LotroPresence.exe` est compilé comme application Windows : aucune fenêtre de console permanente n'est affichée. Il reste visible dans le Gestionnaire des tâches.
 
@@ -120,7 +128,7 @@ Si LOTRO retourne une classe ou une race inconnue, le plugin affiche une seule a
 
 Le bridge conserve le fichier courant pour la lecture rapide, mais contrôle périodiquement les autres `LotroPresence.plugindata`. Cela permet de basculer vers un nouveau personnage actif sans attendre l'expiration de l'ancien fichier. Un fichier `active = false`, même plus récent, n'est jamais choisi comme présence.
 
-Une seule instance du bridge peut fonctionner à la fois.
+Une seule instance du bridge peut fonctionner à la fois. Si Steam relance LotroPresence alors qu'une instance existe déjà, la nouvelle instance peut tout de même lancer LOTRO puis s'arrête, tandis que l'instance déjà active continue de gérer Discord.
 
 ## Races et classes récentes
 
@@ -143,6 +151,7 @@ Le binaire accepte aussi :
 
 ```text
 LotroPresence.exe --self-test
+LotroPresence.exe --steam-launch <commande LOTRO> [arguments LOTRO...]
 ```
 
 Le CI vérifie :
@@ -151,7 +160,7 @@ Le CI vérifie :
 - la cohérence entre la version de `Main.lua` et le manifeste `LotroPresence.plugin`
 - le restore NuGet en mode verrouillé
 - la compilation Windows x64
-- les self-tests du bridge
+- les self-tests du bridge, y compris la conservation des arguments Steam et des caractères spéciaux
 - la présence des fichiers requis dans le ZIP et son checksum SHA-256
 
 Les GitHub Actions utilisées sont épinglées à des SHA de versions compatibles avec Node 24.
@@ -162,8 +171,8 @@ Les pushes ordinaires sur `main` et les pull requests construisent, testent et v
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release effectue dans **le même job** le restore verrouillé, la compilation, les self-tests, la création du ZIP, la validation de son contenu et de son SHA-256, puis publie exactement ce ZIP. Il ne dépend donc pas du stockage GitHub Actions Artifacts.
 
-Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.3-alpha` pour la version `0.4.3`). Seul ce job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.4-alpha` pour la version `0.4.4`). Seul ce job de release reçoit `contents: write`.
 
-Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
+Le workflow de publication ne remplace jamais les assets d'une release déjà existante. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
 
 Voir `NOTICE.md` pour la mention de projet non officiel.
