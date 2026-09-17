@@ -64,7 +64,7 @@ try {
     dotnet restore $BridgeProject --runtime win-x64 --locked-mode
     if ($LASTEXITCODE -ne 0) { throw "Restore bridge en échec." }
 
-    dotnet restore $TestsProject --locked-mode
+    dotnet restore $TestsProject --runtime win-x64
     if ($LASTEXITCODE -ne 0) { throw "Restore tests en échec." }
 
     $AuditOutput = & dotnet list $BridgeProject package --vulnerable --include-transitive --format json 2>&1
@@ -77,10 +77,10 @@ try {
     }
     Write-Host "Audit NuGet : aucune vulnérabilité connue détectée."
 
-    dotnet build $TestsProject --configuration Release --no-restore
+    dotnet build $TestsProject --configuration Release --runtime win-x64 --no-restore
     if ($LASTEXITCODE -ne 0) { throw "Compilation des tests en échec." }
 
-    dotnet run --project $TestsProject --configuration Release --no-build
+    dotnet run --project $TestsProject --configuration Release --runtime win-x64 --no-build
     if ($LASTEXITCODE -ne 0) { throw "Tests de régression en échec." }
 
     if (Test-Path $PublishDirectory) {
