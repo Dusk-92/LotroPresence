@@ -7,15 +7,15 @@ Discord Rich Presence minimal pour **The Lord of the Rings Online**.
 Béornide :
 
 ```text
-Heimvald • Béornide Niveau 28
+Heimvald • Béornide • Niveau 28
 Solo • Serveur Orcrist
 ```
 
 Autre race/classe :
 
 ```text
-Anarmir • Champion niveau 67
-Homme • Communauté de 4 • Serveur Orcrist
+Altherian • Homme • Champion • Niveau 28
+Solo • Serveur Orcrist
 ```
 
 LotroPresence affiche automatiquement :
@@ -36,7 +36,7 @@ La zone n'est volontairement pas utilisée : l'API Lua LOTRO ne fournit pas une 
 Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée sur la deuxième ligne.
 
 ```text
-Heimvald • Béornide Niveau 28
+Heimvald • Béornide • Niveau 28
 Solo • Serveur Orcrist
 ```
 

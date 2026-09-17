@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.5";
+local VERSION = "0.4.6";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;

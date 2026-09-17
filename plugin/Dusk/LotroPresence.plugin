@@ -3,7 +3,7 @@
   <Information>
     <Name>LotroPresence</Name>
     <Author>Dusk</Author>
-    <Version>0.4.5</Version>
+    <Version>0.4.6</Version>
     <Description>Discord Rich Presence : personnage, classe, niveau, race, communauté et serveur.</Description>
   </Information>
   <Package>Dusk.LotroPresence.Main</Package>

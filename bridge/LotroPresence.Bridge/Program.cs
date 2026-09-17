@@ -410,7 +410,7 @@ internal static class Program
 
         parts.Add(string.IsNullOrWhiteSpace(snapshot.ClassName)
             ? $"Niveau {snapshot.Level}"
-            : $"{snapshot.ClassName} Niveau {snapshot.Level}");
+            : $"{snapshot.ClassName} • Niveau {snapshot.Level}");
         return string.Join(" • ", parts);
     }
 
@@ -503,10 +503,10 @@ internal static class Program
         var selection = BuildSelectionPresence(new BridgeConfig(), start);
 
         var ok =
-            BuildDetails(beorning) == "Heimvald • Béornide Niveau 28" &&
+            BuildDetails(beorning) == "Heimvald • Béornide • Niveau 28" &&
             BuildState(beorning) == "Solo • Serveur Orcrist" &&
             GetClassAssetKey(beorning.ClassName) == "class_beorning" &&
-            BuildDetails(champion) == "Altherian • Homme • Champion Niveau 28" &&
+            BuildDetails(champion) == "Altherian • Homme • Champion • Niveau 28" &&
             BuildState(champion) == "Solo • Serveur Orcrist" &&
             GetClassAssetKey(champion.ClassName) == "class_champion" &&
             selection.State == "Sélection de personnage" &&
