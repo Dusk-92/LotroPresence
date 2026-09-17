@@ -49,7 +49,7 @@ LOTRO
   -> Discord Rich Presence
 ```
 
-Le bridge ne lit pas la mémoire de LOTRO, n'injecte aucune DLL, n'intercepte pas le réseau et n'automatise aucune action en jeu.
+Le bridge ne lit pas la mémoire de LOTRO, n'injecte aucune DLL, n'intercepte pas le réseau et n'automatise aucune action en jeu. Il vérifie uniquement l'existence du processus LOTRO afin de savoir quand se fermer automatiquement.
 
 ## Installation
 
@@ -66,13 +66,32 @@ Puis dans LOTRO :
 /plugins load LotroPresence
 ```
 
-Lancer ensuite `LotroPresence.exe` avec Discord Desktop ouvert.
+Lancer ensuite `LotroPresence.exe`. Le bridge fonctionne en arrière-plan sans fenêtre de console et peut être démarré avant LOTRO ou avant Discord.
 
 L'application Discord du projet utilise par défaut l'Application ID public :
 
 ```text
 1550150231092502613
 ```
+
+### Lancement automatique avec Steam
+
+Pour démarrer LotroPresence automatiquement quand LOTRO est lancé depuis Steam, ajouter dans **Steam > Bibliothèque > The Lord of the Rings Online > Propriétés > Options de lancement** :
+
+```text
+cmd /c "start \"\" \"C:\CHEMIN\VERS\LotroPresence.exe\" & %command%"
+```
+
+Adapter uniquement le chemin vers `LotroPresence.exe`.
+
+`LotroPresence.exe` est compilé comme application Windows : aucune fenêtre de console permanente n'est affichée. Il reste visible dans le Gestionnaire des tâches.
+
+Le bridge attend d'avoir détecté le client LOTRO (`lotroclient64.exe` ou `lotroclient.exe`). Une fois LOTRO détecté :
+
+- rester sur l'écran de sélection des personnages ne ferme pas LotroPresence ;
+- changer de personnage ne ferme pas LotroPresence ;
+- fermer réellement LOTRO fait disparaître le processus du jeu ;
+- si le processus reste absent pendant environ 10 secondes, LotroPresence se ferme automatiquement.
 
 ## Configuration
 
@@ -103,9 +122,11 @@ Le bridge conserve le fichier courant pour la lecture rapide, mais contrôle pé
 
 Une seule instance du bridge peut fonctionner à la fois.
 
-## Races récentes
+## Races et classes récentes
 
 Le plugin couvre notamment le Béornide, le Haut-Elfe, le Hache-forte et le Hobbit des Rivières. Pour ce dernier, une détection dynamique complète les noms d'énumération connus afin de rester compatible avec une documentation Lua parfois en retard sur le client.
+
+Le Marin accepte les noms d'énumération `Mariner` et `Corsair` pour rester compatible avec les différentes versions de l'API LOTRO observées.
 
 ## Développement
 
@@ -131,7 +152,7 @@ Le CI vérifie :
 - le restore NuGet en mode verrouillé
 - la compilation Windows x64
 - les self-tests du bridge
-- le contenu exact du ZIP et son checksum SHA-256
+- la présence des fichiers requis dans le ZIP et son checksum SHA-256
 
 Les GitHub Actions utilisées sont épinglées à des SHA de versions compatibles avec Node 24.
 
