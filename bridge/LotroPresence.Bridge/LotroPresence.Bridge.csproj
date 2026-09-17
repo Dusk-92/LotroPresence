@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="config.default.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="config.example.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="config.json" Condition="Exists('config.json')" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

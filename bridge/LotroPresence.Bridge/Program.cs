@@ -10,12 +10,14 @@ internal sealed class BridgeConfig
     public string DiscordApplicationId { get; set; } = string.Empty;
     public string LargeImageKey { get; set; } = string.Empty;
     public string LargeImageText { get; set; } = "The Lord of the Rings Online";
-    public int HeartbeatTimeoutSeconds { get; set; } = 25;
+    public int HeartbeatTimeoutSeconds { get; set; } = 50;
     public int PollIntervalMilliseconds { get; set; } = 2000;
+    public int DiscoveryIntervalSeconds { get; set; } = 10;
 }
 
 internal sealed record PresenceSnapshot(
     string FilePath,
+    int SchemaVersion,
     string Character,
     int Level,
     int ClassId,
@@ -29,13 +31,35 @@ internal sealed record PresenceSnapshot(
 
 internal static class Program
 {
+    private const int SupportedSchemaVersion = 4;
+    private const string MutexName = @"Local\Dusk.LotroPresence.Bridge";
+
     private static readonly Regex EntryRegex = new(
         """\["(?<key>[^"]+)"\]\s*=\s*(?<value>"(?:\\.|[^"])*"|true|false|-?\d+(?:\.\d+)?)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static async Task<int> Main()
+    private static readonly HashSet<string> ReportedSchemaWarnings =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        if (args.Any(arg => string.Equals(arg, "--self-test", StringComparison.OrdinalIgnoreCase)))
+        {
+            return RunSelfTests();
+        }
+
+        using var singleInstanceMutex = new Mutex(
+            initiallyOwned: true,
+            name: MutexName,
+            createdNew: out var createdNew);
+
+        if (!createdNew)
+        {
+            Console.WriteLine("LotroPresence est déjà lancé.");
+            return 0;
+        }
 
         var config = LoadConfig();
         if (config is null)
@@ -52,7 +76,7 @@ internal static class Program
         if (string.IsNullOrWhiteSpace(applicationId) ||
             applicationId.Contains("PUT_DISCORD", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Discord Application ID manquant dans config.json.");
+            Console.Error.WriteLine("Discord Application ID manquant dans la configuration.");
             return 2;
         }
 
@@ -75,21 +99,67 @@ internal static class Program
         Console.WriteLine($"PluginData : {pluginDataRoot}");
         Console.WriteLine("Ctrl+C pour quitter.");
 
-        string? selectedFile = null;
+        FileInfo? selectedFile = null;
+        string? sessionFilePath = null;
         string? lastPresenceKey = null;
         var presenceVisible = false;
         var sessionStart = DateTime.UtcNow;
+        var nextDiscoveryUtc = DateTime.MinValue;
 
         try
         {
             while (!cancellation.IsCancellationRequested)
             {
-                var file = FindLatestPresenceFile(pluginDataRoot);
+                var nowUtc = DateTime.UtcNow;
                 PresenceSnapshot? snapshot = null;
 
-                if (file is not null && IsFresh(file, config.HeartbeatTimeoutSeconds))
+                if (selectedFile is not null)
                 {
-                    snapshot = TryReadSnapshot(file.FullName);
+                    try
+                    {
+                        selectedFile.Refresh();
+                        if (!selectedFile.Exists || !IsFresh(selectedFile, config.HeartbeatTimeoutSeconds))
+                        {
+                            selectedFile = null;
+                            nextDiscoveryUtc = DateTime.MinValue;
+                        }
+                        else
+                        {
+                            snapshot = TryReadSnapshot(selectedFile.FullName);
+                            if (snapshot is { Active: false })
+                            {
+                                nextDiscoveryUtc = DateTime.MinValue;
+                            }
+                        }
+                    }
+                    catch (IOException)
+                    {
+                        selectedFile = null;
+                        nextDiscoveryUtc = DateTime.MinValue;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        selectedFile = null;
+                        nextDiscoveryUtc = DateTime.MinValue;
+                    }
+                }
+
+                var needsDiscovery = selectedFile is null || snapshot is null || !snapshot.Active;
+                if (needsDiscovery && nowUtc >= nextDiscoveryUtc)
+                {
+                    var discovered = FindLatestPresenceFile(pluginDataRoot);
+                    nextDiscoveryUtc = nowUtc.AddSeconds(
+                        Math.Clamp(config.DiscoveryIntervalSeconds, 5, 120));
+
+                    if (discovered is not null && IsFresh(discovered, config.HeartbeatTimeoutSeconds))
+                    {
+                        var candidate = TryReadSnapshot(discovered.FullName);
+                        if (candidate is { Active: true })
+                        {
+                            selectedFile = discovered;
+                            snapshot = candidate;
+                        }
+                    }
                 }
 
                 if (snapshot is null || !snapshot.Active)
@@ -99,15 +169,15 @@ internal static class Program
                         discord.SetPresence(null);
                         presenceVisible = false;
                         lastPresenceKey = null;
-                        selectedFile = null;
+                        sessionFilePath = null;
                         Console.WriteLine("Présence Discord effacée : LotroPresence n'est plus actif.");
                     }
                 }
                 else
                 {
-                    if (!string.Equals(selectedFile, snapshot.FilePath, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(sessionFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase))
                     {
-                        selectedFile = snapshot.FilePath;
+                        sessionFilePath = snapshot.FilePath;
                         sessionStart = DateTime.UtcNow;
                         lastPresenceKey = null;
                     }
@@ -119,7 +189,8 @@ internal static class Program
                         presenceVisible = true;
                         lastPresenceKey = presenceKey;
 
-                        Console.WriteLine($"Présence : {snapshot.Character} • {snapshot.ClassName} niveau {snapshot.Level} | {BuildState(snapshot)}");
+                        Console.WriteLine(
+                            $"Présence : {snapshot.Character} • {snapshot.ClassName} niveau {snapshot.Level} | {BuildState(snapshot)}");
                     }
                 }
 
@@ -135,6 +206,7 @@ internal static class Program
         finally
         {
             discord.SetPresence(null);
+            GC.KeepAlive(singleInstanceMutex);
         }
 
         return 0;
@@ -142,10 +214,16 @@ internal static class Program
 
     private static BridgeConfig? LoadConfig()
     {
-        var configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+        var localConfigPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+        var defaultConfigPath = Path.Combine(AppContext.BaseDirectory, "config.default.json");
+
+        var configPath = File.Exists(localConfigPath)
+            ? localConfigPath
+            : defaultConfigPath;
+
         if (!File.Exists(configPath))
         {
-            Console.Error.WriteLine($"Fichier absent : {configPath}");
+            Console.Error.WriteLine("Configuration absente : config.json ou config.default.json.");
             return null;
         }
 
@@ -159,7 +237,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Impossible de lire config.json : {ex.Message}");
+            Console.Error.WriteLine($"Impossible de lire {Path.GetFileName(configPath)} : {ex.Message}");
             return null;
         }
     }
@@ -191,7 +269,7 @@ internal static class Program
 
     private static bool IsFresh(FileInfo file, int timeoutSeconds)
     {
-        var timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 15, 300));
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 40, 300));
         return DateTime.UtcNow - file.LastWriteTimeUtc <= timeout;
     }
 
@@ -216,6 +294,21 @@ internal static class Program
                 return null;
             }
 
+            var schemaVersion = GetInt(values, "schemaVersion");
+            if (schemaVersion != SupportedSchemaVersion)
+            {
+                if (ReportedSchemaWarnings.Add(path))
+                {
+                    Console.Error.WriteLine(
+                        $"PluginData incompatible : schéma {schemaVersion}, attendu {SupportedSchemaVersion}. " +
+                        "Mets à jour le plugin LOTRO et le bridge ensemble.");
+                }
+
+                return null;
+            }
+
+            ReportedSchemaWarnings.Remove(path);
+
             var character = GetString(values, "character");
             if (string.IsNullOrWhiteSpace(character))
             {
@@ -226,6 +319,7 @@ internal static class Program
 
             return new PresenceSnapshot(
                 path,
+                schemaVersion,
                 character,
                 GetInt(values, "level"),
                 GetInt(values, "classId"),
@@ -273,6 +367,7 @@ internal static class Program
             directory = directory.Parent;
         }
 
+        // Ne jamais remonter arbitrairement jusqu'au dossier du compte LOTRO.
         return string.Empty;
     }
 
@@ -348,6 +443,7 @@ internal static class Program
 
     private static string BuildPresenceKey(PresenceSnapshot snapshot) => string.Join('|',
         snapshot.FilePath,
+        snapshot.SchemaVersion,
         snapshot.Character,
         snapshot.Level,
         snapshot.ClassId,
@@ -410,5 +506,102 @@ internal static class Program
         }
 
         return builder.ToString();
+    }
+
+    private static int RunSelfTests()
+    {
+        var failures = new List<string>();
+
+        static void Check(bool condition, string name, List<string> errors)
+        {
+            if (!condition)
+            {
+                errors.Add(name);
+            }
+        }
+
+        var beorning = new PresenceSnapshot(
+            "test", SupportedSchemaVersion, "Heimvald", 28, 214, "Béornide",
+            114, "Béornide", 1, true, 0, "Orcrist");
+
+        Check(
+            BuildState(beorning) == "Solo • Serveur Orcrist",
+            "Règle spéciale Béornide",
+            failures);
+
+        var champion = new PresenceSnapshot(
+            "test", SupportedSchemaVersion, "Anarmir", 67, 0, "Champion",
+            23, "Homme", 4, true, 0, "Orcrist");
+
+        Check(
+            BuildState(champion) == "Homme • Communauté de 4 • Serveur Orcrist",
+            "Race + communauté + serveur",
+            failures);
+
+        var parsed = ParseFlatLuaTable(
+            """return { ["schemaVersion"] = 4, ["character"] = "Heimvald", ["active"] = true, ["level"] = 28 }""");
+
+        Check(GetInt(parsed, "schemaVersion") == SupportedSchemaVersion, "Parsing schemaVersion", failures);
+        Check(GetString(parsed, "character") == "Heimvald", "Parsing personnage", failures);
+        Check(GetBool(parsed, "active"), "Parsing booléen", failures);
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(),
+            "LotroPresenceSelfTest-" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var characterDirectory = Path.Combine(tempRoot, "ComptePrive", "Orcrist", "Heimvald");
+            Directory.CreateDirectory(characterDirectory);
+            var filePath = Path.Combine(characterDirectory, "LotroPresence.plugindata");
+
+            File.WriteAllText(
+                filePath,
+                """return { ["schemaVersion"] = 4, ["character"] = "Heimvald", ["level"] = 28, ["classId"] = 214, ["className"] = "Béornide", ["raceId"] = 114, ["raceName"] = "Béornide", ["partySize"] = 1, ["active"] = true, ["heartbeat"] = 0 }""",
+                Encoding.UTF8);
+
+            var snapshot = TryReadSnapshot(filePath);
+            Check(snapshot is not null, "Lecture snapshot valide", failures);
+            Check(snapshot?.ServerName == "Orcrist", "Détection serveur", failures);
+            Check(
+                GetServerNameFromCharacterPath(filePath, "AutrePersonnage") == string.Empty,
+                "Protection nom de compte",
+                failures);
+
+            File.WriteAllText(
+                filePath,
+                """return { ["schemaVersion"] = 3, ["character"] = "Heimvald", ["active"] = true }""",
+                Encoding.UTF8);
+
+            Check(TryReadSnapshot(filePath) is null, "Refus d'un schéma incompatible", failures);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, recursive: true);
+                }
+            }
+            catch
+            {
+                // Le nettoyage ne doit pas faire échouer les tests.
+            }
+        }
+
+        if (failures.Count == 0)
+        {
+            Console.WriteLine("Self-test LotroPresence : OK");
+            return 0;
+        }
+
+        Console.Error.WriteLine("Self-test LotroPresence : ECHEC");
+        foreach (var failure in failures)
+        {
+            Console.Error.WriteLine($"- {failure}");
+        }
+
+        return 1;
     }
 }

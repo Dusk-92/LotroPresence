@@ -2,10 +2,10 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.3.0";
+local VERSION = "0.4.0";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
-local HEARTBEAT_INTERVAL = 10;
+local HEARTBEAT_INTERVAL = 20;
 
 local player = Turbine.Gameplay.LocalPlayer:GetInstance();
 local timer = Turbine.UI.Control();
@@ -17,6 +17,30 @@ local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
         map[enumTable[key]] = label;
     end
+end
+
+local function addEnumNameByPattern(map, enumTable, requiredParts, label)
+    if enumTable == nil then
+        return;
+    end
+
+    pcall(function()
+        for key, value in pairs(enumTable) do
+            local normalized = string.lower(tostring(key));
+            local matches = true;
+
+            for index = 1, table.getn(requiredParts) do
+                if string.find(normalized, requiredParts[index], 1, true) == nil then
+                    matches = false;
+                    break;
+                end
+            end
+
+            if matches and type(value) == "number" then
+                map[value] = label;
+            end
+        end
+    end);
 end
 
 local classNames = {};
@@ -42,6 +66,13 @@ addEnumName(raceNames, Turbine.Gameplay.Race, "Hobbit", "Hobbit");
 addEnumName(raceNames, Turbine.Gameplay.Race, "Man", "Homme");
 addEnumName(raceNames, Turbine.Gameplay.Race, "StoutAxe", "Hache-forte");
 
+-- Les documentations Lua publiques ne sont pas toujours à jour avec les races récentes.
+-- On couvre les noms d'énumération plausibles puis on cherche aussi dynamiquement
+-- toute entrée contenant à la fois "river" et "hobbit".
+addEnumName(raceNames, Turbine.Gameplay.Race, "RiverHobbit", "Hobbit des Rivières");
+addEnumName(raceNames, Turbine.Gameplay.Race, "RiverHobbitRace", "Hobbit des Rivières");
+addEnumNameByPattern(raceNames, Turbine.Gameplay.Race, { "river", "hobbit" }, "Hobbit des Rivières");
+
 local function safeCall(fn, fallback)
     local ok, value = pcall(fn);
     if ok and value ~= nil then
@@ -57,12 +88,38 @@ local function getPartySize()
             return 1;
         end
 
-        local count = party:GetMemberCount();
-        if count == nil or count < 1 then
+        local memberCount = party:GetMemberCount();
+        if memberCount == nil or memberCount < 0 then
+            memberCount = 0;
+        end
+
+        -- Selon la version/API, la liste des PartyMember peut inclure ou non
+        -- le joueur local. On le détecte au lieu de supposer un comportement.
+        local localName = player:GetName();
+        local includesLocalPlayer = false;
+
+        for index = 1, memberCount do
+            local member = party:GetMember(index);
+            local memberName = safeCall(function()
+                if member == nil then return ""; end
+                return member:GetName();
+            end, "");
+            if memberName == localName then
+                includesLocalPlayer = true;
+                break;
+            end
+        end
+
+        local total = memberCount;
+        if not includesLocalPlayer then
+            total = total + 1;
+        end
+
+        if total < 1 then
             return 1;
         end
 
-        return count;
+        return total;
     end, 1);
 end
 
@@ -71,7 +128,7 @@ local function buildSnapshot(active)
     local raceId = safeCall(function() return player:GetRace(); end, 0);
 
     return {
-        schemaVersion = 3,
+        schemaVersion = 4,
         pluginVersion = VERSION,
         active = active,
         heartbeat = safeCall(function() return Turbine.Engine.GetLocalTime(); end, 0),
