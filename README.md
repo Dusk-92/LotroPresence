@@ -46,13 +46,15 @@ Puis dans LOTRO :
 
 Le bridge se trouve dans `bridge/LotroPresence.Bridge`.
 
-1. Créer une application dans le Discord Developer Portal.
-2. Copier son **Application ID**.
-3. Copier `config.example.json` en `config.json` à côté de l'exécutable.
-4. Remplacer `PUT_DISCORD_APPLICATION_ID_HERE` par l'Application ID.
-5. Lancer le bridge pendant que Discord Desktop et LOTRO sont ouverts.
+L'application Discord officielle du projet est déjà configurée avec l'Application ID :
 
-Le `ClientId` Discord n'est pas un secret. `config.json` est néanmoins ignoré par Git afin de garder les réglages locaux hors du dépôt.
+```text
+1550150231092502613
+```
+
+Il suffit donc de lancer le bridge pendant que **Discord Desktop** et **LOTRO** sont ouverts.
+
+Le fichier `config.json` permet ensuite de modifier les options locales si besoin (image Discord, fréquence de lecture, délai du heartbeat, etc.). L'Application ID Discord est public et n'est pas un secret.
 
 ## Développement
 
