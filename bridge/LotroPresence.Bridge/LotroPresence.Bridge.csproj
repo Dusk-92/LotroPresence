@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>LotroPresence</AssemblyName>
     <RootNamespace>LotroPresence.Bridge</RootNamespace>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>

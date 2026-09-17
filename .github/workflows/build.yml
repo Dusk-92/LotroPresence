@@ -23,8 +23,30 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Validate source versions
+        shell: pwsh
+        run: |
+          $manifest = [xml](Get-Content -Raw "plugin/Dusk/LotroPresence.plugin")
+          $manifestVersion = [string]$manifest.Plugin.Information.Version
+          $lua = Get-Content -Raw "plugin/Dusk/LotroPresence/Main.lua"
+
+          if ($lua -notmatch 'local VERSION = "([^"]+)";') {
+            throw "Impossible de lire VERSION dans Main.lua."
+          }
+
+          $luaVersion = $Matches[1]
+          if ($luaVersion -ne $manifestVersion) {
+            throw "Versions incohérentes : Main.lua=$luaVersion, manifest=$manifestVersion."
+          }
+
+          Write-Host "Version source cohérente : $manifestVersion"
+
       - name: Restore Windows x64
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64
+        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --use-lock-file
+
+      - name: Show generated NuGet lock
+        shell: pwsh
+        run: Get-Content -Raw bridge/LotroPresence.Bridge/packages.lock.json
 
       - name: Publish Windows x64
         run: >-
@@ -58,11 +80,22 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Validate release tag
+      - name: Validate release tag and source versions
         shell: pwsh
         run: |
           $manifest = [xml](Get-Content -Raw "plugin/Dusk/LotroPresence.plugin")
           $pluginVersion = [string]$manifest.Plugin.Information.Version
+          $lua = Get-Content -Raw "plugin/Dusk/LotroPresence/Main.lua"
+
+          if ($lua -notmatch 'local VERSION = "([^"]+)";') {
+            throw "Impossible de lire VERSION dans Main.lua."
+          }
+
+          $luaVersion = $Matches[1]
+          if ($luaVersion -ne $pluginVersion) {
+            throw "Versions incohérentes : Main.lua=$luaVersion, manifest=$pluginVersion."
+          }
+
           $tag = "${{ github.ref_name }}"
           $pattern = "^v" + [regex]::Escape($pluginVersion) + '($|-)'
 
@@ -71,7 +104,7 @@ jobs:
           }
 
       - name: Restore Windows x64
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64
+        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --use-lock-file
 
       - name: Publish Windows x64
         run: >-
@@ -89,11 +122,13 @@ jobs:
         shell: pwsh
         run: .\publish\LotroPresence\LotroPresence.exe --self-test
 
-      - name: Include LOTRO plugin
+      - name: Include LOTRO plugin and notices
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
           Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
+          Copy-Item -Path NOTICE.md -Destination publish/LotroPresence/NOTICE.md -Force
+          Copy-Item -Path README.md -Destination publish/LotroPresence/README.md -Force
 
       - name: Create ZIP and checksum
         shell: pwsh
@@ -122,7 +157,7 @@ jobs:
             "--repo", "${{ github.repository }}",
             "--verify-tag",
             "--title", "LotroPresence $tag",
-            "--notes", "Build vérifié par CI. Inclut le bridge Windows x64 autonome, le plugin LOTRO et le checksum SHA-256."
+            "--notes", "Build vérifié par CI. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README, le NOTICE et le checksum SHA-256."
           )
 
           if ($tag.Contains("-")) {

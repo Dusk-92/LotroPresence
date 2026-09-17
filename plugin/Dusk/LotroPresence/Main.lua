@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.1";
+local VERSION = "0.4.2";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -13,6 +13,8 @@ local lastCheck = 0;
 local lastHeartbeat = 0;
 local lastFingerprint = nil;
 local lastSaveWarning = -60;
+local warnedUnknownClasses = {};
+local warnedUnknownRaces = {};
 
 local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
@@ -82,6 +84,20 @@ local function safeCall(fn, fallback)
     return fallback;
 end
 
+local function warnUnknown(kind, id, warned)
+    if id == nil or id == 0 or warned[id] then
+        return;
+    end
+
+    warned[id] = true;
+    pcall(function()
+        Turbine.Shell.WriteLine(
+            "LotroPresence : " .. kind .. " inconnue (ID " .. tostring(id) .. "). " ..
+            "La présence continue avec les informations disponibles."
+        );
+    end);
+end
+
 local function getPartySize()
     return safeCall(function()
         local party = player:GetParty();
@@ -127,6 +143,16 @@ end
 local function buildSnapshot(active)
     local classId = safeCall(function() return player:GetClass(); end, 0);
     local raceId = safeCall(function() return player:GetRace(); end, 0);
+    local className = classNames[classId] or "";
+    local raceName = raceNames[raceId] or "";
+
+    if className == "" then
+        warnUnknown("classe", classId, warnedUnknownClasses);
+    end
+
+    if raceName == "" then
+        warnUnknown("race", raceId, warnedUnknownRaces);
+    end
 
     return {
         schemaVersion = 4,
@@ -136,9 +162,9 @@ local function buildSnapshot(active)
         character = safeCall(function() return player:GetName(); end, ""),
         level = safeCall(function() return player:GetLevel(); end, 0),
         classId = classId,
-        className = classNames[classId] or "",
+        className = className,
         raceId = raceId,
-        raceName = raceNames[raceId] or "",
+        raceName = raceName,
         partySize = getPartySize()
     };
 end
@@ -162,7 +188,11 @@ local function savePluginData(data, now)
 
     if not ok and (now - lastSaveWarning) >= 60 then
         lastSaveWarning = now;
-        Turbine.Shell.WriteLine("LotroPresence : impossible d'écrire PluginData. Nouvelle tentative automatique.");
+        pcall(function()
+            Turbine.Shell.WriteLine(
+                "LotroPresence : impossible d'écrire PluginData. Nouvelle tentative automatique."
+            );
+        end);
     end
 
     return ok;
