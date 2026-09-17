@@ -42,6 +42,8 @@ internal static class BridgeConfigLoader
                 return null;
             }
 
+            NormalizeStrings(config);
+
             if (File.Exists(localPath))
             {
                 using var localDocument = JsonDocument.Parse(
@@ -73,6 +75,7 @@ internal static class BridgeConfigLoader
                 }
             }
 
+            NormalizeStrings(config);
             var validationErrors = Validate(config);
             if (validationErrors.Count > 0)
             {
@@ -173,6 +176,7 @@ internal static class BridgeConfigLoader
 
     internal static List<string> Validate(BridgeConfig config)
     {
+        NormalizeStrings(config);
         var errors = new List<string>();
 
         if (config.LargeImageKey.Length > 256)
@@ -203,6 +207,13 @@ internal static class BridgeConfigLoader
         !string.IsNullOrWhiteSpace(value) &&
         value.Length is >= 17 and <= 20 &&
         ulong.TryParse(value, out _);
+
+    private static void NormalizeStrings(BridgeConfig config)
+    {
+        config.DiscordApplicationId ??= string.Empty;
+        config.LargeImageKey ??= string.Empty;
+        config.LargeImageText ??= string.Empty;
+    }
 
     private static bool TryGetString(
         JsonProperty property,
