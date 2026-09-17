@@ -84,7 +84,7 @@ Paramètres principaux :
 
 - `HeartbeatTimeoutSeconds` : délai avant d'effacer une présence devenue inactive
 - `PollIntervalMilliseconds` : fréquence de lecture du fichier courant
-- `DiscoveryIntervalSeconds` : fréquence maximale d'un scan complet de `PluginData`
+- `DiscoveryIntervalSeconds` : fréquence du contrôle des personnages actifs
 - `LargeImageKey` / `LargeImageText` : asset Discord optionnel
 
 ## Fiabilité et confidentialité
@@ -93,11 +93,13 @@ Le format `PluginData` est versionné (`schemaVersion = 4`). Le bridge refuse un
 
 Le serveur n'est accepté que si `LotroPresence.plugindata` se trouve directement dans un dossier portant exactement le nom du personnage ; le dossier parent immédiat est alors utilisé comme serveur. Si cette structure stricte n'est pas reconnue, aucun serveur n'est affiché. Le bridge ne remonte jamais arbitrairement l'arborescence jusqu'au nom du compte LOTRO.
 
-Les écritures `PluginData` côté Lua sont protégées : une erreur d'écriture ne casse pas la boucle du plugin et une nouvelle tentative est effectuée automatiquement.
+Les écritures `PluginData` côté Lua utilisent le callback de `Turbine.PluginData.Save`. Le heartbeat et l'empreinte ne sont validés qu'après confirmation de la sauvegarde ; une erreur déclenche une nouvelle tentative automatique sans casser la boucle du plugin.
+
+Lors du déchargement du plugin, une écriture finale `active = false` est toujours demandée, même si une sauvegarde précédente attend encore son callback.
 
 Si LOTRO retourne une classe ou une race inconnue, le plugin affiche une seule alerte avec l'ID concerné puis continue avec les informations disponibles.
 
-Le scan récursif complet de `PluginData` n'est plus effectué toutes les deux secondes : le bridge conserve le fichier actif et ne relance une découverte complète que lorsque cela est nécessaire.
+Le bridge conserve le fichier courant pour la lecture rapide, mais contrôle périodiquement les autres `LotroPresence.plugindata`. Cela permet de basculer vers un nouveau personnage actif sans attendre l'expiration de l'ancien fichier. Un fichier `active = false`, même plus récent, n'est jamais choisi comme présence.
 
 Une seule instance du bridge peut fonctionner à la fois.
 
@@ -109,12 +111,12 @@ Le plugin couvre notamment le Béornide, le Haut-Elfe, le Hache-forte et le Hobb
 
 Le bridge cible .NET 8 et utilise le paquet NuGet `DiscordRichPresence`.
 
+Le SDK de build est fixé dans `global.json` et les dépendances NuGet transitives sont verrouillées dans `packages.lock.json`.
+
 ```powershell
 dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
 dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore
 ```
-
-Le projet utilise un `packages.lock.json` versionné afin de verrouiller les dépendances NuGet transitives.
 
 Le binaire accepte aussi :
 
@@ -122,14 +124,25 @@ Le binaire accepte aussi :
 LotroPresence.exe --self-test
 ```
 
-Le CI vérifie que la version de `Main.lua` et celle du manifeste `LotroPresence.plugin` sont identiques, puis exécute les auto-tests sur les pushes de `main`, les pull requests et les tags de release.
+Le CI vérifie :
+
+- la syntaxe de `Main.lua` avec Lua 5.1
+- la cohérence entre la version de `Main.lua` et le manifeste `LotroPresence.plugin`
+- le restore NuGet en mode verrouillé
+- la compilation Windows x64
+- les self-tests du bridge
+- le contenu exact du ZIP distribué
+
+Les GitHub Actions utilisées sont épinglées à des SHA de versions compatibles avec Node 24.
 
 ## Releases
 
-Les pushes ordinaires sur `main` construisent et testent le projet mais ne publient plus de release.
+Les pushes ordinaires sur `main` construisent et testent le projet mais ne publient pas de release.
 
-Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.2-alpha` pour la version `0.4.2`). Le job de build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
+Le job de build crée désormais le ZIP, son SHA-256 et les valide **avant** de les déposer comme artifact CI. Lors d'un tag `v*`, le job de release télécharge exactement cet artifact déjà testé : il ne recompile pas un second binaire.
 
-Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient également un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP distribué contient aussi `README.md` et `NOTICE.md`.
+Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.3-alpha` pour la version `0.4.3`). Le build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
+
+Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
 
 Voir `NOTICE.md` pour la mention de projet non officiel.

@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.2";
+local VERSION = "0.4.3";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -13,6 +13,9 @@ local lastCheck = 0;
 local lastHeartbeat = 0;
 local lastFingerprint = nil;
 local lastSaveWarning = -60;
+local saveInFlight = false;
+local inFlightFingerprint = nil;
+local queuedSave = nil;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
 
@@ -98,6 +101,25 @@ local function warnUnknown(kind, id, warned)
     end);
 end
 
+local function warnSave(now, message)
+    if (now - lastSaveWarning) < 60 then
+        return;
+    end
+
+    lastSaveWarning = now;
+    pcall(function()
+        local suffix = "";
+        if message ~= nil and tostring(message) ~= "" then
+            suffix = " (" .. tostring(message) .. ")";
+        end
+
+        Turbine.Shell.WriteLine(
+            "LotroPresence : impossible d'écrire PluginData" .. suffix ..
+            ". Nouvelle tentative automatique."
+        );
+    end);
+end
+
 local function getPartySize()
     return safeCall(function()
         local party = player:GetParty();
@@ -171,6 +193,7 @@ end
 
 local function fingerprint(data)
     return table.concat({
+        tostring(data.active),
         tostring(data.character),
         tostring(data.level),
         tostring(data.classId),
@@ -181,21 +204,63 @@ local function fingerprint(data)
     }, "|");
 end
 
-local function savePluginData(data, now)
-    local ok = pcall(function()
-        Turbine.PluginData.Save(Turbine.DataScope.Character, DATA_KEY, data);
-    end);
-
-    if not ok and (now - lastSaveWarning) >= 60 then
-        lastSaveWarning = now;
-        pcall(function()
-            Turbine.Shell.WriteLine(
-                "LotroPresence : impossible d'écrire PluginData. Nouvelle tentative automatique."
-            );
-        end);
+local savePluginData;
+savePluginData = function(data, currentFingerprint, now)
+    if saveInFlight then
+        if currentFingerprint ~= inFlightFingerprint then
+            queuedSave = {
+                data = data,
+                fingerprint = currentFingerprint
+            };
+        end
+        return false;
     end
 
-    return ok;
+    saveInFlight = true;
+    inFlightFingerprint = currentFingerprint;
+
+    local ok, callError = pcall(function()
+        Turbine.PluginData.Save(
+            Turbine.DataScope.Character,
+            DATA_KEY,
+            data,
+            function(succeeded, message)
+                local completionNow = safeCall(function()
+                    return Turbine.Engine.GetGameTime();
+                end, now);
+
+                saveInFlight = false;
+                inFlightFingerprint = nil;
+
+                if succeeded then
+                    lastFingerprint = currentFingerprint;
+                    lastHeartbeat = completionNow;
+                else
+                    warnSave(completionNow, message);
+                end
+
+                local pending = queuedSave;
+                queuedSave = nil;
+
+                if pending ~= nil and pending.fingerprint ~= lastFingerprint then
+                    savePluginData(
+                        pending.data,
+                        pending.fingerprint,
+                        completionNow
+                    );
+                end
+            end
+        );
+    end);
+
+    if not ok then
+        saveInFlight = false;
+        inFlightFingerprint = nil;
+        warnSave(now, callError);
+        return false;
+    end
+
+    return true;
 end
 
 local function saveSnapshot(forceHeartbeat, active)
@@ -204,10 +269,32 @@ local function saveSnapshot(forceHeartbeat, active)
     local now = Turbine.Engine.GetGameTime();
 
     if forceHeartbeat or currentFingerprint ~= lastFingerprint or (now - lastHeartbeat) >= HEARTBEAT_INTERVAL then
-        if savePluginData(data, now) then
-            lastFingerprint = currentFingerprint;
-            lastHeartbeat = now;
-        end
+        savePluginData(data, currentFingerprint, now);
+    end
+end
+
+local function saveFinalInactiveSnapshot()
+    local data = buildSnapshot(false);
+    local now = safeCall(function() return Turbine.Engine.GetGameTime(); end, 0);
+
+    -- À l'Unload, on lance toujours la dernière écriture même si une sauvegarde
+    -- précédente attend encore son callback. Le plugin ne peut pas attendre
+    -- activement la fin d'une opération asynchrone pendant son déchargement.
+    local ok, callError = pcall(function()
+        Turbine.PluginData.Save(
+            Turbine.DataScope.Character,
+            DATA_KEY,
+            data,
+            function(succeeded, message)
+                if not succeeded then
+                    warnSave(now, message);
+                end
+            end
+        );
+    end);
+
+    if not ok then
+        warnSave(now, callError);
     end
 end
 
@@ -227,7 +314,7 @@ saveSnapshot(true, true);
 if plugin ~= nil then
     plugin.Unload = function()
         timer:SetWantsUpdates(false);
-        saveSnapshot(true, false);
+        saveFinalInactiveSnapshot();
     end;
 end
 

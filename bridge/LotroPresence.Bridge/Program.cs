@@ -26,7 +26,6 @@ internal sealed record PresenceSnapshot(
     string RaceName,
     int PartySize,
     bool Active,
-    long Heartbeat,
     string ServerName);
 
 internal static class Program
@@ -118,7 +117,8 @@ internal static class Program
                     try
                     {
                         selectedFile.Refresh();
-                        if (!selectedFile.Exists || !IsFresh(selectedFile, config.HeartbeatTimeoutSeconds))
+                        if (!selectedFile.Exists ||
+                            !IsFresh(selectedFile, config.HeartbeatTimeoutSeconds))
                         {
                             selectedFile = null;
                             nextDiscoveryUtc = DateTime.MinValue;
@@ -126,8 +126,10 @@ internal static class Program
                         else
                         {
                             snapshot = TryReadSnapshot(selectedFile.FullName);
-                            if (snapshot is { Active: false })
+                            if (snapshot is not { Active: true })
                             {
+                                selectedFile = null;
+                                snapshot = null;
                                 nextDiscoveryUtc = DateTime.MinValue;
                             }
                         }
@@ -144,21 +146,22 @@ internal static class Program
                     }
                 }
 
-                var needsDiscovery = selectedFile is null || snapshot is null || !snapshot.Active;
-                if (needsDiscovery && nowUtc >= nextDiscoveryUtc)
+                // Même avec un personnage actif, on refait périodiquement une
+                // découverte légère afin de détecter un changement de personnage
+                // sans attendre l'expiration de l'ancien heartbeat.
+                if (nowUtc >= nextDiscoveryUtc)
                 {
-                    var discovered = FindLatestPresenceFile(pluginDataRoot);
+                    var discovered = FindLatestActiveSnapshot(
+                        pluginDataRoot,
+                        config.HeartbeatTimeoutSeconds);
+
                     nextDiscoveryUtc = nowUtc.AddSeconds(
                         Math.Clamp(config.DiscoveryIntervalSeconds, 5, 120));
 
-                    if (discovered is not null && IsFresh(discovered, config.HeartbeatTimeoutSeconds))
+                    if (discovered is not null)
                     {
-                        var candidate = TryReadSnapshot(discovered.FullName);
-                        if (candidate is { Active: true })
-                        {
-                            selectedFile = discovered;
-                            snapshot = candidate;
-                        }
+                        selectedFile = new FileInfo(discovered.FilePath);
+                        snapshot = discovered;
                     }
                 }
 
@@ -175,7 +178,10 @@ internal static class Program
                 }
                 else
                 {
-                    if (!string.Equals(sessionFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(
+                            sessionFilePath,
+                            snapshot.FilePath,
+                            StringComparison.OrdinalIgnoreCase))
                     {
                         sessionFilePath = snapshot.FilePath;
                         sessionStart = DateTime.UtcNow;
@@ -237,12 +243,15 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Impossible de lire {Path.GetFileName(configPath)} : {ex.Message}");
+            Console.Error.WriteLine(
+                $"Impossible de lire {Path.GetFileName(configPath)} : {ex.Message}");
             return null;
         }
     }
 
-    private static FileInfo? FindLatestPresenceFile(string pluginDataRoot)
+    private static PresenceSnapshot? FindLatestActiveSnapshot(
+        string pluginDataRoot,
+        int timeoutSeconds)
     {
         if (!Directory.Exists(pluginDataRoot))
         {
@@ -251,11 +260,23 @@ internal static class Program
 
         try
         {
-            return Directory
-                .EnumerateFiles(pluginDataRoot, "LotroPresence.plugindata", SearchOption.AllDirectories)
+            var files = Directory
+                .EnumerateFiles(
+                    pluginDataRoot,
+                    "LotroPresence.plugindata",
+                    SearchOption.AllDirectories)
                 .Select(path => new FileInfo(path))
-                .OrderByDescending(file => file.LastWriteTimeUtc)
-                .FirstOrDefault();
+                .Where(file => IsFresh(file, timeoutSeconds))
+                .OrderByDescending(file => file.LastWriteTimeUtc);
+
+            foreach (var file in files)
+            {
+                var snapshot = TryReadSnapshot(file.FullName);
+                if (snapshot is { Active: true })
+                {
+                    return snapshot;
+                }
+            }
         }
         catch (IOException)
         {
@@ -265,6 +286,8 @@ internal static class Program
         {
             return null;
         }
+
+        return null;
     }
 
     private static bool IsFresh(FileInfo file, int timeoutSeconds)
@@ -283,7 +306,10 @@ internal static class Program
                        FileMode.Open,
                        FileAccess.Read,
                        FileShare.ReadWrite | FileShare.Delete))
-            using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            using (var reader = new StreamReader(
+                       stream,
+                       Encoding.UTF8,
+                       detectEncodingFromByteOrderMarks: true))
             {
                 text = reader.ReadToEnd();
             }
@@ -328,7 +354,6 @@ internal static class Program
                 GetString(values, "raceName"),
                 Math.Max(1, GetInt(values, "partySize")),
                 GetBool(values, "active"),
-                GetLong(values, "heartbeat"),
                 serverName);
         }
         catch (IOException)
@@ -350,7 +375,10 @@ internal static class Program
     {
         var characterDirectory = Directory.GetParent(path);
         if (characterDirectory is null ||
-            !string.Equals(characterDirectory.Name, character, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(
+                characterDirectory.Name,
+                character,
+                StringComparison.OrdinalIgnoreCase))
         {
             return string.Empty;
         }
@@ -476,9 +504,6 @@ internal static class Program
     private static int GetInt(Dictionary<string, string> values, string key) =>
         int.TryParse(GetString(values, key), out var result) ? result : 0;
 
-    private static long GetLong(Dictionary<string, string> values, string key) =>
-        long.TryParse(GetString(values, key), out var result) ? result : 0;
-
     private static bool GetBool(Dictionary<string, string> values, string key) =>
         bool.TryParse(GetString(values, key), out var result) && result;
 
@@ -523,7 +548,7 @@ internal static class Program
 
         var beorning = new PresenceSnapshot(
             "test", SupportedSchemaVersion, "Heimvald", 28, 214, "Béornide",
-            114, "Béornide", 1, true, 0, "Orcrist");
+            114, "Béornide", 1, true, "Orcrist");
 
         Check(
             BuildState(beorning) == "Solo • Serveur Orcrist",
@@ -532,7 +557,7 @@ internal static class Program
 
         var champion = new PresenceSnapshot(
             "test", SupportedSchemaVersion, "Anarmir", 67, 0, "Champion",
-            23, "Homme", 4, true, 0, "Orcrist");
+            23, "Homme", 4, true, "Orcrist");
 
         Check(
             BuildState(champion) == "Homme • Communauté de 4 • Serveur Orcrist",
@@ -542,9 +567,18 @@ internal static class Program
         var parsed = ParseFlatLuaTable(
             """return { ["schemaVersion"] = 4, ["character"] = "Heimvald", ["active"] = true, ["level"] = 28 }""");
 
-        Check(GetInt(parsed, "schemaVersion") == SupportedSchemaVersion, "Parsing schemaVersion", failures);
-        Check(GetString(parsed, "character") == "Heimvald", "Parsing personnage", failures);
-        Check(GetBool(parsed, "active"), "Parsing booléen", failures);
+        Check(
+            GetInt(parsed, "schemaVersion") == SupportedSchemaVersion,
+            "Parsing schemaVersion",
+            failures);
+        Check(
+            GetString(parsed, "character") == "Heimvald",
+            "Parsing personnage",
+            failures);
+        Check(
+            GetBool(parsed, "active"),
+            "Parsing booléen",
+            failures);
 
         var tempRoot = Path.Combine(
             Path.GetTempPath(),
@@ -552,37 +586,95 @@ internal static class Program
 
         try
         {
-            var characterDirectory = Path.Combine(tempRoot, "ComptePrive", "Orcrist", "Heimvald");
-            Directory.CreateDirectory(characterDirectory);
-            var filePath = Path.Combine(characterDirectory, "LotroPresence.plugindata");
+            var accountDirectory = Path.Combine(tempRoot, "ComptePrive");
+            var heimvaldDirectory = Path.Combine(accountDirectory, "Orcrist", "Heimvald");
+            Directory.CreateDirectory(heimvaldDirectory);
+            var heimvaldPath = Path.Combine(
+                heimvaldDirectory,
+                "LotroPresence.plugindata");
 
             File.WriteAllText(
-                filePath,
+                heimvaldPath,
                 """return { ["schemaVersion"] = 4, ["character"] = "Heimvald", ["level"] = 28, ["classId"] = 214, ["className"] = "Béornide", ["raceId"] = 114, ["raceName"] = "Béornide", ["partySize"] = 1, ["active"] = true, ["heartbeat"] = 0 }""",
                 Encoding.UTF8);
 
-            var snapshot = TryReadSnapshot(filePath);
+            var snapshot = TryReadSnapshot(heimvaldPath);
             Check(snapshot is not null, "Lecture snapshot valide", failures);
-            Check(snapshot?.ServerName == "Orcrist", "Détection serveur stricte", failures);
             Check(
-                GetServerNameFromCharacterPath(filePath, "AutrePersonnage") == string.Empty,
+                snapshot?.ServerName == "Orcrist",
+                "Détection serveur stricte",
+                failures);
+            Check(
+                GetServerNameFromCharacterPath(
+                    heimvaldPath,
+                    "AutrePersonnage") == string.Empty,
                 "Protection nom de compte",
                 failures);
 
-            var nestedDirectory = Path.Combine(characterDirectory, "SousDossier");
+            var nestedDirectory = Path.Combine(heimvaldDirectory, "SousDossier");
             Directory.CreateDirectory(nestedDirectory);
-            var nestedPath = Path.Combine(nestedDirectory, "LotroPresence.plugindata");
+            var nestedPath = Path.Combine(
+                nestedDirectory,
+                "LotroPresence.plugindata");
             Check(
-                GetServerNameFromCharacterPath(nestedPath, "Heimvald") == string.Empty,
+                GetServerNameFromCharacterPath(
+                    nestedPath,
+                    "Heimvald") == string.Empty,
                 "Refus serveur si le fichier n'est pas directement sous le personnage",
                 failures);
 
+            // Un fichier inactif plus récent ne doit pas masquer un personnage actif.
+            var inactiveDirectory = Path.Combine(accountDirectory, "Orcrist", "AncienPerso");
+            Directory.CreateDirectory(inactiveDirectory);
+            var inactivePath = Path.Combine(
+                inactiveDirectory,
+                "LotroPresence.plugindata");
+
             File.WriteAllText(
-                filePath,
+                inactivePath,
+                """return { ["schemaVersion"] = 4, ["character"] = "AncienPerso", ["level"] = 20, ["classId"] = 0, ["className"] = "Champion", ["raceId"] = 0, ["raceName"] = "Homme", ["partySize"] = 1, ["active"] = false, ["heartbeat"] = 0 }""",
+                Encoding.UTF8);
+
+            File.SetLastWriteTimeUtc(heimvaldPath, DateTime.UtcNow.AddSeconds(-3));
+            File.SetLastWriteTimeUtc(inactivePath, DateTime.UtcNow.AddSeconds(-2));
+
+            var activeDespiteNewerInactive =
+                FindLatestActiveSnapshot(tempRoot, 50);
+            Check(
+                activeDespiteNewerInactive?.Character == "Heimvald",
+                "Ignorer un PluginData inactif plus récent",
+                failures);
+
+            // Un nouveau personnage actif doit remplacer l'ancien sans attendre
+            // le timeout de son fichier.
+            var anarmirDirectory = Path.Combine(accountDirectory, "Orcrist", "Anarmir");
+            Directory.CreateDirectory(anarmirDirectory);
+            var anarmirPath = Path.Combine(
+                anarmirDirectory,
+                "LotroPresence.plugindata");
+
+            File.WriteAllText(
+                anarmirPath,
+                """return { ["schemaVersion"] = 4, ["character"] = "Anarmir", ["level"] = 67, ["classId"] = 0, ["className"] = "Champion", ["raceId"] = 23, ["raceName"] = "Homme", ["partySize"] = 4, ["active"] = true, ["heartbeat"] = 0 }""",
+                Encoding.UTF8);
+
+            File.SetLastWriteTimeUtc(anarmirPath, DateTime.UtcNow.AddSeconds(-1));
+
+            var newestActive = FindLatestActiveSnapshot(tempRoot, 50);
+            Check(
+                newestActive?.Character == "Anarmir",
+                "Sélection du personnage actif le plus récent",
+                failures);
+
+            File.WriteAllText(
+                heimvaldPath,
                 """return { ["schemaVersion"] = 3, ["character"] = "Heimvald", ["active"] = true }""",
                 Encoding.UTF8);
 
-            Check(TryReadSnapshot(filePath) is null, "Refus d'un schéma incompatible", failures);
+            Check(
+                TryReadSnapshot(heimvaldPath) is null,
+                "Refus d'un schéma incompatible",
+                failures);
         }
         finally
         {

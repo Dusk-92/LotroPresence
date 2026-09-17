@@ -11,17 +11,33 @@ permissions:
   contents: read
 
 jobs:
+  lua-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Validate Lua syntax
+        run: luac5.1 -p plugin/Dusk/LotroPresence/Main.lua
+
   bridge:
+    needs: lua-lint
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.425'
 
       - name: Validate source versions
         shell: pwsh
@@ -60,21 +76,70 @@ jobs:
         shell: pwsh
         run: .\publish\LotroPresence\LotroPresence.exe --self-test
 
+      - name: Include LOTRO plugin and notices
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
+          Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
+          Copy-Item -Path NOTICE.md -Destination publish/LotroPresence/NOTICE.md -Force
+          Copy-Item -Path README.md -Destination publish/LotroPresence/README.md -Force
+
+      - name: Create ZIP and checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/LotroPresence/* -DestinationPath LotroPresence-win-x64.zip -Force
+          $hash = (Get-FileHash LotroPresence-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  LotroPresence-win-x64.zip" | Set-Content -Path LotroPresence-win-x64.zip.sha256 -Encoding ascii
+
+      - name: Validate package contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = (Resolve-Path "LotroPresence-win-x64.zip").Path
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            $required = @(
+              "LotroPresence.exe",
+              "config.default.json",
+              "plugin/Dusk/LotroPresence.plugin",
+              "plugin/Dusk/LotroPresence/Main.lua",
+              "README.md",
+              "NOTICE.md"
+            )
+
+            foreach ($entry in $required) {
+              if ($entries -notcontains $entry) {
+                throw "Fichier manquant dans le ZIP : $entry"
+              }
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
+      - name: Upload tested package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lotropresence-package
+          path: |
+            LotroPresence-win-x64.zip
+            LotroPresence-win-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: bridge
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: '8.0.x'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate release tag and source versions
         shell: pwsh
@@ -99,39 +164,23 @@ jobs:
             throw "Le tag $tag ne correspond pas à la version du plugin $pluginVersion."
           }
 
-      - name: Restore Windows x64 (locked)
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
+      - name: Download tested package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lotropresence-package
+          path: .
 
-      - name: Publish Windows x64
-        run: >-
-          dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          --no-restore
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=None
-          --output publish/LotroPresence
-
-      - name: Run bridge self-tests
-        shell: pwsh
-        run: .\publish\LotroPresence\LotroPresence.exe --self-test
-
-      - name: Include LOTRO plugin and notices
+      - name: Verify checksum
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
-          Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
-          Copy-Item -Path NOTICE.md -Destination publish/LotroPresence/NOTICE.md -Force
-          Copy-Item -Path README.md -Destination publish/LotroPresence/README.md -Force
+          $expected = ((Get-Content -Raw "LotroPresence-win-x64.zip.sha256").Trim() -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash "LotroPresence-win-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
 
-      - name: Create ZIP and checksum
-        shell: pwsh
-        run: |
-          Compress-Archive -Path publish/LotroPresence/* -DestinationPath LotroPresence-win-x64.zip -Force
-          $hash = (Get-FileHash LotroPresence-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  LotroPresence-win-x64.zip" | Set-Content -Path LotroPresence-win-x64.zip.sha256 -Encoding ascii
+          if ($actual -ne $expected) {
+            throw "Checksum invalide : attendu $expected, obtenu $actual."
+          }
+
+          Write-Host "SHA-256 vérifié : $actual"
 
       - name: Publish immutable release
         shell: pwsh
@@ -153,7 +202,7 @@ jobs:
             "--repo", "${{ github.repository }}",
             "--verify-tag",
             "--title", "LotroPresence $tag",
-            "--notes", "Build vérifié par CI. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README, le NOTICE et le checksum SHA-256."
+            "--notes", "Build vérifié par CI. Le ZIP publié est exactement l'artifact ayant passé le lint Lua 5.1, le build .NET, les self-tests et la validation du contenu. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README, le NOTICE et le checksum SHA-256."
           )
 
           if ($tag.Contains("-")) {
