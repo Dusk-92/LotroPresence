@@ -75,7 +75,21 @@ jobs:
 
       - name: Run bridge self-tests
         shell: pwsh
-        run: .\publish\LotroPresence\LotroPresence.exe --self-test
+        run: |
+          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Self-tests LotroPresence en échec (code $($process.ExitCode))."
+          }
+
+      - name: Smoke-test silent startup
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -PassThru
+          Start-Sleep -Seconds 2
+          if ($process.HasExited) {
+            throw "LotroPresence s'est arrêté au démarrage silencieux (code $($process.ExitCode))."
+          }
+          Stop-Process -Id $process.Id -Force
 
       - name: Include LOTRO plugin and notices
         shell: pwsh
@@ -184,7 +198,21 @@ jobs:
 
       - name: Run bridge self-tests
         shell: pwsh
-        run: .\publish\LotroPresence\LotroPresence.exe --self-test
+        run: |
+          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Self-tests LotroPresence en échec (code $($process.ExitCode))."
+          }
+
+      - name: Smoke-test silent startup
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -PassThru
+          Start-Sleep -Seconds 2
+          if ($process.HasExited) {
+            throw "LotroPresence s'est arrêté au démarrage silencieux (code $($process.ExitCode))."
+          }
+          Stop-Process -Id $process.Id -Force
 
       - name: Include LOTRO plugin and notices
         shell: pwsh
@@ -257,7 +285,7 @@ jobs:
             "--repo", "${{ github.repository }}",
             "--verify-tag",
             "--title", "LotroPresence $tag",
-            "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, compilation .NET, self-tests, validation du ZIP et du SHA-256. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README et le NOTICE."
+            "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, compilation .NET, self-tests, smoke-test du démarrage sans console, validation du ZIP et du SHA-256. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README et le NOTICE."
           )
 
           if ($tag.Contains("-")) {
