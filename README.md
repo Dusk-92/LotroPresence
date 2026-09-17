@@ -4,21 +4,47 @@ Discord Rich Presence minimal pour **The Lord of the Rings Online**.
 
 ## Affichage Discord
 
+Exemple avec un Béornide :
+
 ```text
-Anarmir • Champion niveau 67
-Bree • Orcrist
+Heimvald • Béornide niveau 28
+Solo • Serveur Orcrist
 ```
 
-LotroPresence n'affiche volontairement que :
+Exemple avec une autre race/classe :
+
+```text
+Anarmir • Champion niveau 67
+Homme • Communauté de 4 • Serveur Orcrist
+```
+
+LotroPresence affiche automatiquement :
 
 - nom du personnage
 - classe
 - niveau
-- zone / lieu courant
+- race
+- Solo ou Communauté de X
 - serveur
 - durée de session Discord
 
-Pas d'état combat, de groupe, de cible ou de forme de classe.
+### Règle spéciale Béornide
+
+Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée sur la deuxième ligne.
+
+Ainsi :
+
+```text
+Heimvald • Béornide niveau 28
+Solo • Serveur Orcrist
+```
+
+et non :
+
+```text
+Heimvald • Béornide niveau 28
+Béornide • Solo • Serveur Orcrist
+```
 
 ## Architecture
 
@@ -54,28 +80,6 @@ L'application Discord du projet utilise l'Application ID :
 ```text
 1550150231092502613
 ```
-
-## Zone courante
-
-L'API Lua LOTRO ne permet pas à un plugin de demander automatiquement la position ou la zone du joueur. LotroPresence utilise donc l'alias natif `;loc` quand le joueur le lui transmet.
-
-Pour actualiser la zone :
-
-```text
-/lp ;loc
-```
-
-La zone obtenue est mémorisée pour ce personnage et reste affichée jusqu'à la prochaine actualisation.
-
-Commandes utiles :
-
-```text
-/lp ;loc
-/lp zone Nom de zone
-/lp clear
-```
-
-`/lp zone ...` permet de corriger manuellement le nom affiché si `;loc` renvoie un sous-lieu plutôt que la zone souhaitée.
 
 ## Serveur
 

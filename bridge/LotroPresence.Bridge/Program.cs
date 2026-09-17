@@ -20,7 +20,9 @@ internal sealed record PresenceSnapshot(
     int Level,
     int ClassId,
     string ClassName,
-    string ZoneName,
+    int RaceId,
+    string RaceName,
+    int PartySize,
     bool Active,
     long Heartbeat,
     string ServerName);
@@ -117,10 +119,7 @@ internal static class Program
                         presenceVisible = true;
                         lastPresenceKey = presenceKey;
 
-                        var place = string.Join(" • ", new[] { snapshot.ZoneName, snapshot.ServerName }
-                            .Where(value => !string.IsNullOrWhiteSpace(value)));
-                        Console.WriteLine($"Présence : {snapshot.Character} • {snapshot.ClassName} niveau {snapshot.Level}" +
-                                          (string.IsNullOrWhiteSpace(place) ? string.Empty : $" | {place}"));
+                        Console.WriteLine($"Présence : {snapshot.Character} • {snapshot.ClassName} niveau {snapshot.Level} | {BuildState(snapshot)}");
                     }
                 }
 
@@ -231,7 +230,9 @@ internal static class Program
                 GetInt(values, "level"),
                 GetInt(values, "classId"),
                 GetString(values, "className"),
-                GetString(values, "zoneName"),
+                GetInt(values, "raceId"),
+                GetString(values, "raceName"),
+                Math.Max(1, GetInt(values, "partySize")),
                 GetBool(values, "active"),
                 GetLong(values, "heartbeat"),
                 serverName);
@@ -272,8 +273,6 @@ internal static class Program
             directory = directory.Parent;
         }
 
-        // On ne devine jamais le serveur si le dossier du personnage n'est pas trouvé :
-        // cela évite d'afficher accidentellement le nom du compte LOTRO.
         return string.Empty;
     }
 
@@ -298,14 +297,10 @@ internal static class Program
             ? $"Niveau {snapshot.Level}"
             : $"{snapshot.ClassName} niveau {snapshot.Level}";
 
-        var stateParts = new[] { snapshot.ZoneName, snapshot.ServerName }
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
         var presence = new RichPresence
         {
             Details = Limit($"{snapshot.Character} • {classText}", 120),
-            State = Limit(string.Join(" • ", stateParts), 120),
+            State = Limit(BuildState(snapshot), 120),
             Timestamps = new Timestamps
             {
                 Start = sessionStart
@@ -326,13 +321,40 @@ internal static class Program
         return presence;
     }
 
+    private static string BuildState(PresenceSnapshot snapshot)
+    {
+        var parts = new List<string>();
+
+        var duplicateBeorning =
+            string.Equals(snapshot.ClassName, "Béornide", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(snapshot.RaceName, "Béornide", StringComparison.OrdinalIgnoreCase);
+
+        if (!duplicateBeorning && !string.IsNullOrWhiteSpace(snapshot.RaceName))
+        {
+            parts.Add(snapshot.RaceName);
+        }
+
+        parts.Add(snapshot.PartySize > 1
+            ? $"Communauté de {snapshot.PartySize}"
+            : "Solo");
+
+        if (!string.IsNullOrWhiteSpace(snapshot.ServerName))
+        {
+            parts.Add($"Serveur {snapshot.ServerName}");
+        }
+
+        return string.Join(" • ", parts);
+    }
+
     private static string BuildPresenceKey(PresenceSnapshot snapshot) => string.Join('|',
         snapshot.FilePath,
         snapshot.Character,
         snapshot.Level,
         snapshot.ClassId,
         snapshot.ClassName,
-        snapshot.ZoneName,
+        snapshot.RaceId,
+        snapshot.RaceName,
+        snapshot.PartySize,
         snapshot.Active,
         snapshot.ServerName);
 

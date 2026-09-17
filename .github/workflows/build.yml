@@ -53,10 +53,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v0.2.0-alpha"
+          $tag = "v0.3.0-alpha"
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag LotroPresence-win-x64.zip --repo "${{ github.repository }}" --title "LotroPresence v0.2.0-alpha" --notes "Présence Discord simplifiée : personnage, classe, niveau, zone et serveur. La zone s'actualise avec /lp ;loc." --prerelease
+            gh release create $tag LotroPresence-win-x64.zip --repo "${{ github.repository }}" --title "LotroPresence v0.3.0-alpha" --notes "Ajout de la race et de l'état Solo/Communauté. Les Béornides n'affichent pas la race une seconde fois. La zone a été retirée." --prerelease
           } else {
             gh release upload $tag LotroPresence-win-x64.zip --repo "${{ github.repository }}" --clobber
           }
