@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   bridge:
     runs-on: windows-latest
@@ -40,10 +43,20 @@ jobs:
           New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
           Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
 
-      - name: Upload Windows package
-        uses: actions/upload-artifact@v4
-        with:
-          name: LotroPresence-win-x64
-          path: publish/LotroPresence/**
-          if-no-files-found: error
-          compression-level: 9
+      - name: Create ZIP
+        shell: pwsh
+        run: Compress-Archive -Path publish/LotroPresence/* -DestinationPath LotroPresence-win-x64.zip -Force
+
+      - name: Publish development release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v0.1.0-alpha"
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag LotroPresence-win-x64.zip --repo "${{ github.repository }}" --title "LotroPresence v0.1.0-alpha" --notes "Première version expérimentale de LotroPresence. Contient le bridge Windows x64 autonome et le plugin LOTRO." --prerelease
+          } else {
+            gh release upload $tag LotroPresence-win-x64.zip --repo "${{ github.repository }}" --clobber
+          }
