@@ -295,7 +295,7 @@ internal static class Program
 
         var stateParts = new List<string>
         {
-            snapshot.InCombat ? "⚔️ En combat" : "🗺️ Exploration"
+            snapshot.InCombat ? "⚔️ En combat" : "🟢 Hors combat"
         };
 
         if (snapshot.BearForm)
