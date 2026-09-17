@@ -4,8 +4,8 @@ using System.Runtime.CompilerServices;
 namespace LotroPresence.Bridge;
 
 /// <summary>
-/// Surveille uniquement l'existence du processus LOTRO pour fermer le bridge
-/// automatiquement lorsque le client de jeu est réellement quitté.
+/// Surveille uniquement l'existence du processus LOTRO. Le premier instant où
+/// le client de jeu est détecté devient le début de session partagé avec Discord.
 /// Aucun accès à la mémoire du jeu n'est effectué.
 /// </summary>
 internal static class LotroLifecycleMonitor
@@ -18,6 +18,18 @@ internal static class LotroLifecycleMonitor
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ExitGrace = TimeSpan.FromSeconds(10);
+    private static long sessionStartedUtcTicks;
+
+    internal static DateTime? SessionStartedUtc
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref sessionStartedUtcTicks);
+            return ticks == 0
+                ? null
+                : new DateTime(ticks, DateTimeKind.Utc);
+        }
+    }
 
     [ModuleInitializer]
     internal static void Start()
@@ -47,6 +59,15 @@ internal static class LotroLifecycleMonitor
             var running = TryIsLotroRunning();
             if (running is true)
             {
+                if (!lotroSeen)
+                {
+                    var detectedUtc = DateTime.UtcNow;
+                    Interlocked.CompareExchange(
+                        ref sessionStartedUtcTicks,
+                        detectedUtc.Ticks,
+                        comparand: 0);
+                }
+
                 lotroSeen = true;
                 missingSinceUtc = null;
             }
