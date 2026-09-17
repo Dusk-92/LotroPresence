@@ -131,17 +131,17 @@ Le CI vérifie :
 - le restore NuGet en mode verrouillé
 - la compilation Windows x64
 - les self-tests du bridge
-- le contenu exact du ZIP distribué
+- le contenu exact du ZIP et son checksum SHA-256
 
 Les GitHub Actions utilisées sont épinglées à des SHA de versions compatibles avec Node 24.
 
 ## Releases
 
-Les pushes ordinaires sur `main` construisent et testent le projet mais ne publient pas de release.
+Les pushes ordinaires sur `main` et les pull requests construisent, testent et valident le package avec des permissions en lecture seule, sans publier de release.
 
-Le job de build crée désormais le ZIP, son SHA-256 et les valide **avant** de les déposer comme artifact CI. Lors d'un tag `v*`, le job de release télécharge exactement cet artifact déjà testé : il ne recompile pas un second binaire.
+Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release effectue dans **le même job** le restore verrouillé, la compilation, les self-tests, la création du ZIP, la validation de son contenu et de son SHA-256, puis publie exactement ce ZIP. Il ne dépend donc pas du stockage GitHub Actions Artifacts.
 
-Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.3-alpha` pour la version `0.4.3`). Le build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.3-alpha` pour la version `0.4.3`). Seul ce job de release reçoit `contents: write`.
 
 Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
 
