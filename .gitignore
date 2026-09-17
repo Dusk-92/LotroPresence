@@ -1,0 +1,19 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Local configuration
+config.json
+**/config.json
+
+# LOTRO generated data
+*.plugindata
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
