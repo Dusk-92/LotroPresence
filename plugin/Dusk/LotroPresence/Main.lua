@@ -59,6 +59,7 @@ addEnumName(classNames, Turbine.Gameplay.Class, "Guardian", "Gardien");
 addEnumName(classNames, Turbine.Gameplay.Class, "Hunter", "Chasseur");
 addEnumName(classNames, Turbine.Gameplay.Class, "LoreMaster", "Maître du savoir");
 addEnumName(classNames, Turbine.Gameplay.Class, "Mariner", "Marin");
+addEnumName(classNames, Turbine.Gameplay.Class, "Corsair", "Marin");
 addEnumName(classNames, Turbine.Gameplay.Class, "Minstrel", "Ménestrel");
 addEnumName(classNames, Turbine.Gameplay.Class, "RuneKeeper", "Gardien des runes");
 addEnumName(classNames, Turbine.Gameplay.Class, "Warden", "Sentinelle");
