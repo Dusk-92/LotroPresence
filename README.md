@@ -91,7 +91,9 @@ Paramètres principaux :
 
 Le format `PluginData` est versionné (`schemaVersion = 4`). Le bridge refuse un schéma incompatible plutôt que d'afficher des données ambiguës.
 
-Le serveur est déterminé uniquement lorsque le bridge retrouve explicitement le dossier du personnage dans `PluginData`, puis utilise son dossier parent. Il ne remonte jamais arbitrairement jusqu'au nom du compte LOTRO.
+Le serveur n'est accepté que si `LotroPresence.plugindata` se trouve directement dans un dossier portant exactement le nom du personnage ; le dossier parent immédiat est alors utilisé comme serveur. Si cette structure stricte n'est pas reconnue, aucun serveur n'est affiché. Le bridge ne remonte jamais arbitrairement l'arborescence jusqu'au nom du compte LOTRO.
+
+Les écritures `PluginData` côté Lua sont protégées : une erreur d'écriture ne casse pas la boucle du plugin et une nouvelle tentative est effectuée automatiquement.
 
 Le scan récursif complet de `PluginData` n'est plus effectué toutes les deux secondes : le bridge conserve le fichier actif et ne relance une découverte complète que lorsque cela est nécessaire.
 
@@ -116,10 +118,14 @@ Le binaire accepte aussi :
 LotroPresence.exe --self-test
 ```
 
-Le CI exécute ces auto-tests avant de publier une release.
+Le CI exécute ces auto-tests sur les pushes de `main`, les pull requests et les tags de release.
 
 ## Releases
 
-Les releases sont immuables : un tag existant n'est plus écrasé par un nouveau ZIP. Chaque release contient également un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement.
+Les pushes ordinaires sur `main` construisent et testent le projet mais ne publient plus de release.
+
+Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.1-alpha` pour la version `0.4.1`). Le job de build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
+
+Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient également un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement.
 
 Voir `NOTICE.md` pour la mention de projet non officiel.

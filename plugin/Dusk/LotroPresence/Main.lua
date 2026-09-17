@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.0";
+local VERSION = "0.4.1";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -12,6 +12,7 @@ local timer = Turbine.UI.Control();
 local lastCheck = 0;
 local lastHeartbeat = 0;
 local lastFingerprint = nil;
+local lastSaveWarning = -60;
 
 local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
@@ -154,15 +155,29 @@ local function fingerprint(data)
     }, "|");
 end
 
+local function savePluginData(data, now)
+    local ok = pcall(function()
+        Turbine.PluginData.Save(Turbine.DataScope.Character, DATA_KEY, data);
+    end);
+
+    if not ok and (now - lastSaveWarning) >= 60 then
+        lastSaveWarning = now;
+        Turbine.Shell.WriteLine("LotroPresence : impossible d'écrire PluginData. Nouvelle tentative automatique.");
+    end
+
+    return ok;
+end
+
 local function saveSnapshot(forceHeartbeat, active)
     local data = buildSnapshot(active);
     local currentFingerprint = fingerprint(data);
     local now = Turbine.Engine.GetGameTime();
 
     if forceHeartbeat or currentFingerprint ~= lastFingerprint or (now - lastHeartbeat) >= HEARTBEAT_INTERVAL then
-        Turbine.PluginData.Save(Turbine.DataScope.Character, DATA_KEY, data);
-        lastFingerprint = currentFingerprint;
-        lastHeartbeat = now;
+        if savePluginData(data, now) then
+            lastFingerprint = currentFingerprint;
+            lastHeartbeat = now;
+        end
     end
 end
 

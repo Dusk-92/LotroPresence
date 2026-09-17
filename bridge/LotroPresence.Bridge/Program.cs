@@ -348,27 +348,28 @@ internal static class Program
 
     private static string GetServerNameFromCharacterPath(string path, string character)
     {
-        var directory = Directory.GetParent(path);
-
-        while (directory is not null)
+        var characterDirectory = Directory.GetParent(path);
+        if (characterDirectory is null ||
+            !string.Equals(characterDirectory.Name, character, StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(directory.Name, character, StringComparison.OrdinalIgnoreCase))
-            {
-                var server = directory.Parent?.Name ?? string.Empty;
-                if (!string.Equals(server, "AllServers", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(server, "AllCharacters", StringComparison.OrdinalIgnoreCase))
-                {
-                    return server;
-                }
-
-                return string.Empty;
-            }
-
-            directory = directory.Parent;
+            return string.Empty;
         }
 
-        // Ne jamais remonter arbitrairement jusqu'au dossier du compte LOTRO.
-        return string.Empty;
+        var serverDirectory = characterDirectory.Parent;
+        if (serverDirectory is null)
+        {
+            return string.Empty;
+        }
+
+        var server = serverDirectory.Name;
+        if (string.IsNullOrWhiteSpace(server) ||
+            string.Equals(server, "AllServers", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(server, "AllCharacters", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return server;
     }
 
     private static Dictionary<string, string> ParseFlatLuaTable(string text)
@@ -562,10 +563,18 @@ internal static class Program
 
             var snapshot = TryReadSnapshot(filePath);
             Check(snapshot is not null, "Lecture snapshot valide", failures);
-            Check(snapshot?.ServerName == "Orcrist", "Détection serveur", failures);
+            Check(snapshot?.ServerName == "Orcrist", "Détection serveur stricte", failures);
             Check(
                 GetServerNameFromCharacterPath(filePath, "AutrePersonnage") == string.Empty,
                 "Protection nom de compte",
+                failures);
+
+            var nestedDirectory = Path.Combine(characterDirectory, "SousDossier");
+            Directory.CreateDirectory(nestedDirectory);
+            var nestedPath = Path.Combine(nestedDirectory, "LotroPresence.plugindata");
+            Check(
+                GetServerNameFromCharacterPath(nestedPath, "Heimvald") == string.Empty,
+                "Refus serveur si le fichier n'est pas directement sous le personnage",
                 failures);
 
             File.WriteAllText(
