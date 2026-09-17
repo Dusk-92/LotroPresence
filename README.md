@@ -95,6 +95,8 @@ Le serveur n'est accepté que si `LotroPresence.plugindata` se trouve directemen
 
 Les écritures `PluginData` côté Lua sont protégées : une erreur d'écriture ne casse pas la boucle du plugin et une nouvelle tentative est effectuée automatiquement.
 
+Si LOTRO retourne une classe ou une race inconnue, le plugin affiche une seule alerte avec l'ID concerné puis continue avec les informations disponibles.
+
 Le scan récursif complet de `PluginData` n'est plus effectué toutes les deux secondes : le bridge conserve le fichier actif et ne relance une découverte complète que lorsque cela est nécessaire.
 
 Une seule instance du bridge peut fonctionner à la fois.
@@ -108,9 +110,11 @@ Le plugin couvre notamment le Béornide, le Haut-Elfe, le Hache-forte et le Hobb
 Le bridge cible .NET 8 et utilise le paquet NuGet `DiscordRichPresence`.
 
 ```powershell
-dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64
-dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --configuration Release --runtime win-x64 --self-contained true
+dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
+dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore
 ```
+
+Le projet utilise un `packages.lock.json` versionné afin de verrouiller les dépendances NuGet transitives.
 
 Le binaire accepte aussi :
 
@@ -118,14 +122,14 @@ Le binaire accepte aussi :
 LotroPresence.exe --self-test
 ```
 
-Le CI exécute ces auto-tests sur les pushes de `main`, les pull requests et les tags de release.
+Le CI vérifie que la version de `Main.lua` et celle du manifeste `LotroPresence.plugin` sont identiques, puis exécute les auto-tests sur les pushes de `main`, les pull requests et les tags de release.
 
 ## Releases
 
 Les pushes ordinaires sur `main` construisent et testent le projet mais ne publient plus de release.
 
-Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.1-alpha` pour la version `0.4.1`). Le job de build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
+Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.2-alpha` pour la version `0.4.2`). Le job de build/test fonctionne avec des permissions GitHub en lecture seule ; seul le job de release reçoit `contents: write`.
 
-Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient également un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement.
+Les releases restent immuables : une release existante n'est jamais écrasée par un nouveau ZIP. Chaque release contient également un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP distribué contient aussi `README.md` et `NOTICE.md`.
 
 Voir `NOTICE.md` pour la mention de projet non officiel.
