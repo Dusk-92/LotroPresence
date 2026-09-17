@@ -1,0 +1,7 @@
+{
+  "DiscordApplicationId": "PUT_DISCORD_APPLICATION_ID_HERE",
+  "LargeImageKey": "",
+  "LargeImageText": "The Lord of the Rings Online",
+  "HeartbeatTimeoutSeconds": 25,
+  "PollIntervalMilliseconds": 2000
+}
