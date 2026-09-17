@@ -4,9 +4,7 @@ namespace LotroPresence.Bridge;
 
 /// <summary>
 /// Petit adaptateur autour du client DiscordRPC.
-/// La bibliothèque garde déjà une boucle de reconnexion IPC en arrière-plan ;
-/// cet adaptateur rend simplement l'état réel visible dans la console et évite
-/// de laisser croire que Discord est connecté quand il ne l'est pas encore.
+/// Les erreurs IPC sont journalisées localement sans faire tomber le bridge.
 /// </summary>
 internal sealed class DiscordRpcClient : IDisposable
 {
@@ -21,7 +19,7 @@ internal sealed class DiscordRpcClient : IDisposable
         {
             if (Interlocked.Exchange(ref connectionState, 1) != 1)
             {
-                Console.WriteLine("Discord connecté. Présence synchronisée.");
+                AppLog.Info("Discord connecté. Présence synchronisée.");
             }
         };
 
@@ -29,7 +27,7 @@ internal sealed class DiscordRpcClient : IDisposable
         {
             if (Interlocked.Exchange(ref connectionState, 0) != 0)
             {
-                Console.WriteLine("Discord indisponible. Reconnexion automatique en cours...");
+                AppLog.Warning("Discord indisponible. Reconnexion automatique en cours.");
             }
         };
 
@@ -40,7 +38,7 @@ internal sealed class DiscordRpcClient : IDisposable
                 var reason = string.IsNullOrWhiteSpace(message?.Reason)
                     ? string.Empty
                     : $" ({message.Reason})";
-                Console.WriteLine($"Connexion Discord perdue{reason}. Reconnexion automatique en cours...");
+                AppLog.Warning($"Connexion Discord perdue{reason}. Reconnexion automatique en cours.");
             }
         };
 
@@ -48,29 +46,52 @@ internal sealed class DiscordRpcClient : IDisposable
         {
             if (message is not null)
             {
-                Console.Error.WriteLine($"Discord RPC : {message.Message}");
+                AppLog.Error($"Discord RPC : {message.Message}");
             }
         };
     }
 
     public bool Initialize()
     {
-        var started = inner.Initialize();
-        if (!started)
+        try
         {
-            Console.Error.WriteLine("Impossible de démarrer la connexion Discord RPC.");
+            var started = inner.Initialize();
+            if (!started)
+            {
+                AppLog.Error("Impossible de démarrer la connexion Discord RPC.");
+            }
+            return started;
         }
-
-        return started;
+        catch (Exception exception)
+        {
+            AppLog.Error("Exception pendant l'initialisation Discord RPC.", exception);
+            return false;
+        }
     }
 
-    public void SetPresence(RichPresence? presence)
+    public bool SetPresence(RichPresence? presence)
     {
-        inner.SetPresence(presence);
+        try
+        {
+            inner.SetPresence(presence);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Impossible de mettre à jour la présence Discord.", exception);
+            return false;
+        }
     }
 
     public void Dispose()
     {
-        inner.Dispose();
+        try
+        {
+            inner.Dispose();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Erreur pendant la fermeture de Discord RPC.", exception);
+        }
     }
 }

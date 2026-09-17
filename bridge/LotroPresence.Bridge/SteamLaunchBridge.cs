@@ -41,14 +41,15 @@ internal static class SteamLaunchBridge
             using var process = Process.Start(BuildStartInfo(command));
             if (process is null)
             {
+                AppLog.Error("Le wrapper Steam n'a pas pu démarrer la commande LOTRO.");
                 Environment.Exit(2);
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // WinExe n'a volontairement pas de console. En cas d'échec du lancement
-            // de LOTRO, on quitte avec un code d'erreur au lieu de laisser un bridge
-            // invisible tourner sans avoir démarré le jeu.
+            // Ne jamais journaliser les arguments de lancement : ils peuvent
+            // contenir des informations privées ajoutées par l'utilisateur.
+            AppLog.Error("Échec du lancement LOTRO via le wrapper Steam.", exception);
             Environment.Exit(2);
         }
     }

@@ -35,112 +35,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.425'
+          dotnet-version: '10.0.401'
 
-      - name: Validate source versions
+      - name: Build, audit, test and package
         shell: pwsh
-        run: |
-          $manifest = [xml](Get-Content -Raw "plugin/Dusk/LotroPresence.plugin")
-          $manifestVersion = [string]$manifest.Plugin.Information.Version
-          $lua = Get-Content -Raw "plugin/Dusk/LotroPresence/Main.lua"
-
-          if ($lua -notmatch 'local VERSION = "([^"]+)";') {
-            throw "Impossible de lire VERSION dans Main.lua."
-          }
-
-          $luaVersion = $Matches[1]
-          if ($luaVersion -ne $manifestVersion) {
-            throw "Versions incohérentes : Main.lua=$luaVersion, manifest=$manifestVersion."
-          }
-
-          Write-Host "Version source cohérente : $manifestVersion"
-
-      - name: Restore Windows x64 (locked)
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
-
-      - name: Publish Windows x64
-        run: >-
-          dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          --no-restore
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=None
-          --output publish/LotroPresence
-
-      - name: Run bridge self-tests
-        shell: pwsh
-        run: |
-          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -ArgumentList "--self-test" -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "Self-tests LotroPresence en échec (code $($process.ExitCode))."
-          }
-
-      - name: Smoke-test silent startup
-        shell: pwsh
-        run: |
-          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -PassThru
-          Start-Sleep -Seconds 2
-          if ($process.HasExited) {
-            throw "LotroPresence s'est arrêté au démarrage silencieux (code $($process.ExitCode))."
-          }
-          Stop-Process -Id $process.Id -Force
-
-      - name: Include LOTRO plugin and notices
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
-          Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
-          Copy-Item -Path NOTICE.md -Destination publish/LotroPresence/NOTICE.md -Force
-          Copy-Item -Path README.md -Destination publish/LotroPresence/README.md -Force
-
-      - name: Create ZIP and checksum
-        shell: pwsh
-        run: |
-          Compress-Archive -Path publish/LotroPresence/* -DestinationPath LotroPresence-win-x64.zip -Force
-          $hash = (Get-FileHash LotroPresence-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  LotroPresence-win-x64.zip" | Set-Content -Path LotroPresence-win-x64.zip.sha256 -Encoding ascii
-
-      - name: Validate package contents and checksum
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zipPath = (Resolve-Path "LotroPresence-win-x64.zip").Path
-          $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-
-          try {
-            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            $required = @(
-              "LotroPresence.exe",
-              "config.default.json",
-              "plugin/Dusk/LotroPresence.plugin",
-              "plugin/Dusk/LotroPresence/Main.lua",
-              "README.md",
-              "NOTICE.md"
-            )
-
-            foreach ($entry in $required) {
-              if ($entries -notcontains $entry) {
-                throw "Fichier manquant dans le ZIP : $entry"
-              }
-            }
-          }
-          finally {
-            $archive.Dispose()
-          }
-
-          $expected = ((Get-Content -Raw "LotroPresence-win-x64.zip.sha256").Trim() -split '\s+')[0].ToLowerInvariant()
-          $actual = (Get-FileHash "LotroPresence-win-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) {
-            throw "Checksum invalide : attendu $expected, obtenu $actual."
-          }
-
-          Write-Host "Package validé. SHA-256 : $actual"
+        run: ./build/Build-LotroPresence.ps1
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -153,119 +55,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup .NET
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.425'
+          dotnet-version: '10.0.401'
 
-      - name: Validate release tag and source versions
+      - name: Build, audit, test and package exact tag
         shell: pwsh
-        run: |
-          $manifest = [xml](Get-Content -Raw "plugin/Dusk/LotroPresence.plugin")
-          $pluginVersion = [string]$manifest.Plugin.Information.Version
-          $lua = Get-Content -Raw "plugin/Dusk/LotroPresence/Main.lua"
+        run: ./build/Build-LotroPresence.ps1 -ExpectedTag "${{ github.ref_name }}"
 
-          if ($lua -notmatch 'local VERSION = "([^"]+)";') {
-            throw "Impossible de lire VERSION dans Main.lua."
-          }
-
-          $luaVersion = $Matches[1]
-          if ($luaVersion -ne $pluginVersion) {
-            throw "Versions incohérentes : Main.lua=$luaVersion, manifest=$pluginVersion."
-          }
-
-          $tag = "${{ github.ref_name }}"
-          $pattern = "^v" + [regex]::Escape($pluginVersion) + '($|-)'
-
-          if ($tag -notmatch $pattern) {
-            throw "Le tag $tag ne correspond pas à la version du plugin $pluginVersion."
-          }
-
-      - name: Restore Windows x64 (locked)
-        run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64 --locked-mode
-
-      - name: Publish Windows x64
-        run: >-
-          dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          --no-restore
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=None
-          --output publish/LotroPresence
-
-      - name: Run bridge self-tests
-        shell: pwsh
-        run: |
-          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -ArgumentList "--self-test" -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "Self-tests LotroPresence en échec (code $($process.ExitCode))."
-          }
-
-      - name: Smoke-test silent startup
-        shell: pwsh
-        run: |
-          $process = Start-Process -FilePath ".\publish\LotroPresence\LotroPresence.exe" -PassThru
-          Start-Sleep -Seconds 2
-          if ($process.HasExited) {
-            throw "LotroPresence s'est arrêté au démarrage silencieux (code $($process.ExitCode))."
-          }
-          Stop-Process -Id $process.Id -Force
-
-      - name: Include LOTRO plugin and notices
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
-          Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
-          Copy-Item -Path NOTICE.md -Destination publish/LotroPresence/NOTICE.md -Force
-          Copy-Item -Path README.md -Destination publish/LotroPresence/README.md -Force
-
-      - name: Create ZIP and checksum
-        shell: pwsh
-        run: |
-          Compress-Archive -Path publish/LotroPresence/* -DestinationPath LotroPresence-win-x64.zip -Force
-          $hash = (Get-FileHash LotroPresence-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  LotroPresence-win-x64.zip" | Set-Content -Path LotroPresence-win-x64.zip.sha256 -Encoding ascii
-
-      - name: Validate release package
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zipPath = (Resolve-Path "LotroPresence-win-x64.zip").Path
-          $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-
-          try {
-            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            $required = @(
-              "LotroPresence.exe",
-              "config.default.json",
-              "plugin/Dusk/LotroPresence.plugin",
-              "plugin/Dusk/LotroPresence/Main.lua",
-              "README.md",
-              "NOTICE.md"
-            )
-
-            foreach ($entry in $required) {
-              if ($entries -notcontains $entry) {
-                throw "Fichier manquant dans le ZIP : $entry"
-              }
-            }
-          }
-          finally {
-            $archive.Dispose()
-          }
-
-          $expected = ((Get-Content -Raw "LotroPresence-win-x64.zip.sha256").Trim() -split '\s+')[0].ToLowerInvariant()
-          $actual = (Get-FileHash "LotroPresence-win-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) {
-            throw "Checksum invalide : attendu $expected, obtenu $actual."
-          }
-
-          Write-Host "Package de release validé. SHA-256 : $actual"
-
-      - name: Publish immutable release
+      - name: Publish non-overwriting release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -274,7 +73,7 @@ jobs:
 
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag existe déjà : elle reste immuable, aucun asset n'est remplacé."
+            Write-Host "Release $tag existe déjà : aucun asset n'est remplacé."
             exit 0
           }
 
@@ -285,7 +84,7 @@ jobs:
             "--repo", "${{ github.repository }}",
             "--verify-tag",
             "--title", "LotroPresence $tag",
-            "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, compilation .NET, self-tests, smoke-test du démarrage sans console, validation du ZIP et du SHA-256. Inclut le bridge Windows x64 autonome, le plugin LOTRO, le README et le NOTICE."
+            "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, audit des vulnérabilités, tests de régression, compilation .NET 10 LTS, self-tests, smoke-test, validation du ZIP et du SHA-256."
           )
 
           if ($tag.Contains("-")) {

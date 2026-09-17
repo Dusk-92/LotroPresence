@@ -4,6 +4,13 @@
 *.user
 *.suo
 
+# Build / test outputs
+publish/
+TestResults/
+LotroPresence-win-x64.zip
+LotroPresence-win-x64.zip.sha256
+*.log
+
 # Local configuration
 config.json
 **/config.json
