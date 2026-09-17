@@ -42,8 +42,6 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        Console.OutputEncoding = Encoding.UTF8;
-
         if (args.Any(arg => string.Equals(arg, "--self-test", StringComparison.OrdinalIgnoreCase)))
         {
             return RunSelfTests();
@@ -88,11 +86,6 @@ internal static class Program
         discord.Initialize();
 
         using var cancellation = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            cancellation.Cancel();
-        };
 
         Console.WriteLine("LotroPresence bridge démarré.");
         Console.WriteLine($"PluginData : {pluginDataRoot}");
