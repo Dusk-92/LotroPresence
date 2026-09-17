@@ -22,5 +22,28 @@ jobs:
       - name: Restore
         run: dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
 
-      - name: Build
-        run: dotnet build bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --configuration Release --no-restore
+      - name: Publish Windows x64
+        run: >-
+          dotnet publish bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          --output publish/LotroPresence
+
+      - name: Include LOTRO plugin
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish/LotroPresence/plugin | Out-Null
+          Copy-Item -Path plugin/Dusk -Destination publish/LotroPresence/plugin -Recurse -Force
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: LotroPresence-win-x64
+          path: publish/LotroPresence/**
+          if-no-files-found: error
+          compression-level: 9
