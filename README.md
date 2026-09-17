@@ -1,6 +1,24 @@
 # LOTRO Presence
 
-Discord Rich Presence pour **The Lord of the Rings Online**, conçu pour rester aussi passif que possible côté jeu.
+Discord Rich Presence minimal pour **The Lord of the Rings Online**.
+
+## Affichage Discord
+
+```text
+Anarmir • Champion niveau 67
+Bree • Orcrist
+```
+
+LotroPresence n'affiche volontairement que :
+
+- nom du personnage
+- classe
+- niveau
+- zone / lieu courant
+- serveur
+- durée de session Discord
+
+Pas d'état combat, de groupe, de cible ou de forme de classe.
 
 ## Architecture
 
@@ -12,22 +30,9 @@ LOTRO
   -> Discord Rich Presence
 ```
 
-Le bridge **ne lit pas la mémoire de LOTRO**, n'injecte aucune DLL, n'intercepte pas le réseau et n'automatise aucune action en jeu.
+Le bridge ne lit pas la mémoire de LOTRO, n'injecte aucune DLL, n'intercepte pas le réseau et n'automatise aucune action en jeu.
 
-## État du projet
-
-V0.1 expérimentale :
-
-- nom du personnage
-- niveau
-- classe (quand l'API l'identifie)
-- état combat / hors combat
-- taille du groupe
-- forme d'ours du Béornide quand disponible
-- détection automatique du fichier `.plugindata` le plus récent
-- arrêt automatique du Rich Presence si le heartbeat du plugin devient trop ancien
-
-## Installation du plugin LOTRO
+## Installation
 
 Copier le contenu de `plugin/` dans :
 
@@ -42,29 +47,45 @@ Puis dans LOTRO :
 /plugins load LotroPresence
 ```
 
-## Bridge Discord
+Lancer ensuite `LotroPresence.exe` avec Discord Desktop ouvert.
 
-Le bridge se trouve dans `bridge/LotroPresence.Bridge`.
-
-L'application Discord officielle du projet est déjà configurée avec l'Application ID :
+L'application Discord du projet utilise l'Application ID :
 
 ```text
 1550150231092502613
 ```
 
-Il suffit donc de lancer le bridge pendant que **Discord Desktop** et **LOTRO** sont ouverts.
+## Zone courante
 
-Le fichier `config.json` permet ensuite de modifier les options locales si besoin (image Discord, fréquence de lecture, délai du heartbeat, etc.). L'Application ID Discord est public et n'est pas un secret.
+L'API Lua LOTRO ne permet pas à un plugin de demander automatiquement la position ou la zone du joueur. LotroPresence utilise donc l'alias natif `;loc` quand le joueur le lui transmet.
+
+Pour actualiser la zone :
+
+```text
+/lp ;loc
+```
+
+La zone obtenue est mémorisée pour ce personnage et reste affichée jusqu'à la prochaine actualisation.
+
+Commandes utiles :
+
+```text
+/lp ;loc
+/lp zone Nom de zone
+/lp clear
+```
+
+`/lp zone ...` permet de corriger manuellement le nom affiché si `;loc` renvoie un sous-lieu plutôt que la zone souhaitée.
+
+## Serveur
+
+Le serveur est déterminé uniquement lorsque le bridge retrouve explicitement le dossier du personnage dans `PluginData`. Il prend alors le dossier parent comme serveur. Si cette structure n'est pas reconnue, aucun serveur n'est affiché afin de ne jamais confondre le serveur avec le nom du compte LOTRO.
 
 ## Développement
 
 Le bridge cible .NET 8 et utilise le paquet NuGet `DiscordRichPresence`.
 
 ```powershell
-dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
+dotnet restore bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj --runtime win-x64
 dotnet run --project bridge/LotroPresence.Bridge/LotroPresence.Bridge.csproj
 ```
-
-## Limites connues
-
-LOTRO n'expose pas directement toutes les informations que WoW expose à ses addons. En particulier, la zone courante demandera une méthode séparée et ne fait volontairement pas partie de cette première version.

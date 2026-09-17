@@ -3,8 +3,8 @@
   <Information>
     <Name>LotroPresence</Name>
     <Author>Dusk</Author>
-    <Version>0.1.0</Version>
-    <Description>Exports a small, passive LOTRO presence snapshot for the external Discord bridge.</Description>
+    <Version>0.2.0</Version>
+    <Description>Discord Rich Presence minimal : personnage, classe, niveau, zone et serveur.</Description>
   </Information>
   <Package>Dusk.LotroPresence.Main</Package>
 </Plugin>

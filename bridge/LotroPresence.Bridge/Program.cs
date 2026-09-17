@@ -20,11 +20,7 @@ internal sealed record PresenceSnapshot(
     int Level,
     int ClassId,
     string ClassName,
-    int RaceId,
-    string RaceName,
-    bool InCombat,
-    int PartySize,
-    bool BearForm,
+    string ZoneName,
     bool Active,
     long Heartbeat,
     string ServerName);
@@ -102,7 +98,7 @@ internal static class Program
                         presenceVisible = false;
                         lastPresenceKey = null;
                         selectedFile = null;
-                        Console.WriteLine("Présence Discord effacée : LOTROPresence n'est plus actif.");
+                        Console.WriteLine("Présence Discord effacée : LotroPresence n'est plus actif.");
                     }
                 }
                 else
@@ -117,14 +113,14 @@ internal static class Program
                     var presenceKey = BuildPresenceKey(snapshot);
                     if (!string.Equals(presenceKey, lastPresenceKey, StringComparison.Ordinal))
                     {
-                        var presence = BuildPresence(snapshot, config, sessionStart);
-                        discord.SetPresence(presence);
+                        discord.SetPresence(BuildPresence(snapshot, config, sessionStart));
                         presenceVisible = true;
                         lastPresenceKey = presenceKey;
 
-                        Console.WriteLine(
-                            $"Présence : {snapshot.Character}, niveau {snapshot.Level}, " +
-                            $"{(snapshot.InCombat ? "combat" : "hors combat")}");
+                        var place = string.Join(" • ", new[] { snapshot.ZoneName, snapshot.ServerName }
+                            .Where(value => !string.IsNullOrWhiteSpace(value)));
+                        Console.WriteLine($"Présence : {snapshot.Character} • {snapshot.ClassName} niveau {snapshot.Level}" +
+                                          (string.IsNullOrWhiteSpace(place) ? string.Empty : $" | {place}"));
                     }
                 }
 
@@ -135,7 +131,7 @@ internal static class Program
         }
         catch (OperationCanceledException)
         {
-            // Normal shutdown via Ctrl+C.
+            // Arrêt normal via Ctrl+C.
         }
         finally
         {
@@ -151,7 +147,6 @@ internal static class Program
         if (!File.Exists(configPath))
         {
             Console.Error.WriteLine($"Fichier absent : {configPath}");
-            Console.Error.WriteLine("Copie config.example.json en config.json puis ajoute ton Discord Application ID.");
             return null;
         }
 
@@ -228,8 +223,7 @@ internal static class Program
                 return null;
             }
 
-            // Do not infer the server from PluginData folder names: that can expose the LOTRO account name.
-            var serverName = string.Empty;
+            var serverName = GetServerNameFromCharacterPath(path, character);
 
             return new PresenceSnapshot(
                 path,
@@ -237,11 +231,7 @@ internal static class Program
                 GetInt(values, "level"),
                 GetInt(values, "classId"),
                 GetString(values, "className"),
-                GetInt(values, "raceId"),
-                GetString(values, "raceName"),
-                GetBool(values, "inCombat"),
-                Math.Max(1, GetInt(values, "partySize")),
-                GetBool(values, "bearForm"),
+                GetString(values, "zoneName"),
                 GetBool(values, "active"),
                 GetLong(values, "heartbeat"),
                 serverName);
@@ -259,6 +249,32 @@ internal static class Program
             Console.Error.WriteLine($"Erreur de lecture PluginData : {ex.Message}");
             return null;
         }
+    }
+
+    private static string GetServerNameFromCharacterPath(string path, string character)
+    {
+        var directory = Directory.GetParent(path);
+
+        while (directory is not null)
+        {
+            if (string.Equals(directory.Name, character, StringComparison.OrdinalIgnoreCase))
+            {
+                var server = directory.Parent?.Name ?? string.Empty;
+                if (!string.Equals(server, "AllServers", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(server, "AllCharacters", StringComparison.OrdinalIgnoreCase))
+                {
+                    return server;
+                }
+
+                return string.Empty;
+            }
+
+            directory = directory.Parent;
+        }
+
+        // On ne devine jamais le serveur si le dossier du personnage n'est pas trouvé :
+        // cela évite d'afficher accidentellement le nom du compte LOTRO.
+        return string.Empty;
     }
 
     private static Dictionary<string, string> ParseFlatLuaTable(string text)
@@ -282,35 +298,13 @@ internal static class Program
             ? $"Niveau {snapshot.Level}"
             : $"{snapshot.ClassName} niveau {snapshot.Level}";
 
-        var detailsParts = new List<string>
-        {
-            snapshot.Character,
-            classText
-        };
-
-        if (snapshot.PartySize > 1)
-        {
-            detailsParts.Add($"Groupe {snapshot.PartySize}");
-        }
-
-        var stateParts = new List<string>
-        {
-            snapshot.InCombat ? "⚔️ En combat" : "🟢 Hors combat"
-        };
-
-        if (snapshot.BearForm)
-        {
-            stateParts.Add("🐻 Forme d'ours");
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.ServerName))
-        {
-            stateParts.Add(snapshot.ServerName);
-        }
+        var stateParts = new[] { snapshot.ZoneName, snapshot.ServerName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
 
         var presence = new RichPresence
         {
-            Details = Limit(string.Join(" • ", detailsParts), 120),
+            Details = Limit($"{snapshot.Character} • {classText}", 120),
             State = Limit(string.Join(" • ", stateParts), 120),
             Timestamps = new Timestamps
             {
@@ -338,10 +332,7 @@ internal static class Program
         snapshot.Level,
         snapshot.ClassId,
         snapshot.ClassName,
-        snapshot.RaceId,
-        snapshot.InCombat,
-        snapshot.PartySize,
-        snapshot.BearForm,
+        snapshot.ZoneName,
         snapshot.Active,
         snapshot.ServerName);
 
