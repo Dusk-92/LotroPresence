@@ -124,7 +124,7 @@ internal static class Program
 
                         Console.WriteLine(
                             $"Présence : {snapshot.Character}, niveau {snapshot.Level}, " +
-                            $"{(snapshot.InCombat ? "combat" : "hors combat")}, serveur {snapshot.ServerName}");
+                            $"{(snapshot.InCombat ? "combat" : "hors combat")}");
                     }
                 }
 
@@ -228,8 +228,8 @@ internal static class Program
                 return null;
             }
 
-            var characterDirectory = Directory.GetParent(path);
-            var serverName = characterDirectory?.Parent?.Parent?.Name ?? string.Empty;
+            // Do not infer the server from PluginData folder names: that can expose the LOTRO account name.
+            var serverName = string.Empty;
 
             return new PresenceSnapshot(
                 path,
