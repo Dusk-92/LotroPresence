@@ -7,7 +7,7 @@ Discord Rich Presence minimal pour **The Lord of the Rings Online**.
 Béornide :
 
 ```text
-Heimvald • Béornide niveau 28
+Heimvald • Béornide Niveau 28
 Solo • Serveur Orcrist
 ```
 
@@ -26,7 +26,8 @@ LotroPresence affiche automatiquement :
 - race
 - Solo ou Communauté de X
 - serveur
-- durée de session Discord
+- durée de session LOTRO continue, sans remise à zéro lors d'un changement de personnage
+- icône Discord de la classe active ou de la sélection de personnage
 
 La zone n'est volontairement pas utilisée : l'API Lua LOTRO ne fournit pas une zone courante fiable et automatique.
 
@@ -35,7 +36,7 @@ La zone n'est volontairement pas utilisée : l'API Lua LOTRO ne fournit pas une 
 Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée sur la deuxième ligne.
 
 ```text
-Heimvald • Béornide niveau 28
+Heimvald • Béornide Niveau 28
 Solo • Serveur Orcrist
 ```
 
@@ -96,8 +97,8 @@ Attention : si un nom d'utilisateur ou un mot de passe est placé dans les optio
 
 Le bridge attend d'avoir détecté le client LOTRO (`lotroclient64.exe` ou `lotroclient.exe`). Une fois LOTRO détecté :
 
-- rester sur l'écran de sélection des personnages ne ferme pas LotroPresence ;
-- changer de personnage ne ferme pas LotroPresence ;
+- l'écran de sélection affiche « Sélection de personnage » avec l'asset `character_select` ;
+- changer de personnage conserve le même timer de session ;
 - fermer réellement LOTRO fait disparaître le processus du jeu ;
 - si le processus reste absent pendant environ 10 secondes, LotroPresence se ferme automatiquement.
 
@@ -171,7 +172,7 @@ Les pushes ordinaires sur `main` et les pull requests construisent, testent et v
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release effectue dans **le même job** le restore verrouillé, la compilation, les self-tests, la création du ZIP, la validation de son contenu et de son SHA-256, puis publie exactement ce ZIP. Il ne dépend donc pas du stockage GitHub Actions Artifacts.
 
-Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.4-alpha` pour la version `0.4.4`). Seul ce job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `LotroPresence.plugin` (par exemple `v0.4.5-alpha` pour la version `0.4.4`). Seul ce job de release reçoit `contents: write`.
 
 Le workflow de publication ne remplace jamais les assets d'une release déjà existante. Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `README.md` et `NOTICE.md`.
 
