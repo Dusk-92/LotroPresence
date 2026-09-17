@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<Plugin>
+  <Information>
+    <Name>LotroPresence</Name>
+    <Author>Dusk</Author>
+    <Version>0.1.0</Version>
+    <Description>Exports a small, passive LOTRO presence snapshot for the external Discord bridge.</Description>
+  </Information>
+  <Package>Dusk.LotroPresence.Main</Package>
+</Plugin>
