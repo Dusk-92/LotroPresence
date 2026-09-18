@@ -279,7 +279,7 @@ internal static class TestProgram
         new("test", 4, character, level, 0, className, 0, raceName, partySize, true, server);
 
     private static string SnapshotText(string character, bool active, int level = 28) =>
-        $"""
+        $$"""
         return {
             ["schemaVersion"] = 4,
             ["pluginVersion"] = "0.4.17",
