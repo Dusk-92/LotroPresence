@@ -67,31 +67,74 @@ jobs:
         shell: pwsh
         run: ./build/Build-LotroPresence.ps1 -ExpectedTag "${{ github.ref_name }}"
 
-      - name: Publish non-overwriting release
+      - name: Publish release and clean obsolete binaries
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
+          $repository = "${{ github.repository }}"
 
-          gh release view $tag --repo "${{ github.repository }}" *> $null
+          gh release view $tag --repo $repository *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag existe déjà : aucun asset n'est remplacé."
-            exit 0
+          }
+          else {
+            $releaseArgs = @(
+              "release", "create", $tag,
+              "LotroPresence-win-x64.zip",
+              "LotroPresence-win-x64.zip.sha256",
+              "--repo", $repository,
+              "--verify-tag",
+              "--title", "LotroPresence $tag",
+              "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, audit des vulnérabilités, tests de régression, compilation .NET 10 LTS, self-tests, smoke-test, validation du ZIP et du SHA-256."
+            )
+
+            if ($tag.Contains("-")) {
+              $releaseArgs += "--prerelease"
+            }
+
+            gh @releaseArgs
+            if ($LASTEXITCODE -ne 0) {
+              throw "Création de la release $tag en échec."
+            }
           }
 
-          $releaseArgs = @(
-            "release", "create", $tag,
+          $binaryAssetNames = @(
             "LotroPresence-win-x64.zip",
-            "LotroPresence-win-x64.zip.sha256",
-            "--repo", "${{ github.repository }}",
-            "--verify-tag",
-            "--title", "LotroPresence $tag",
-            "--notes", "Build vérifié dans le même job que la publication : lint Lua 5.1, restore NuGet verrouillé, audit des vulnérabilités, tests de régression, compilation .NET 10 LTS, self-tests, smoke-test, validation du ZIP et du SHA-256."
+            "LotroPresence-win-x64.zip.sha256"
           )
 
-          if ($tag.Contains("-")) {
-            $releaseArgs += "--prerelease"
-          }
+          $page = 1
+          while ($true) {
+            $json = gh api "/repos/$repository/releases?per_page=100&page=$page"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Impossible de lister les releases pour le nettoyage."
+            }
 
-          gh @releaseArgs
+            $releases = @($json | ConvertFrom-Json)
+            foreach ($release in $releases) {
+              if ([string]$release.tag_name -eq $tag) {
+                continue
+              }
+
+              foreach ($asset in @($release.assets)) {
+                if ($binaryAssetNames -notcontains [string]$asset.name) {
+                  continue
+                }
+
+                gh api --method DELETE "/repos/$repository/releases/assets/$($asset.id)" *> $null
+                if ($LASTEXITCODE -ne 0) {
+                  throw "Échec de suppression de l'asset $($asset.name) de $($release.tag_name)."
+                }
+
+                Write-Host "Ancien asset supprimé : $($release.tag_name) / $($asset.name)"
+              }
+            }
+
+            if ($releases.Count -lt 100) {
+              break
+            }
+
+            $page++
+          }
