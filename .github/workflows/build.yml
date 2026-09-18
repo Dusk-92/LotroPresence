@@ -47,37 +47,6 @@ jobs:
 
 
 
-  cleanup-old-release-assets:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lua-lint, bridge]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Remove obsolete alpha release assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          ids=(
-            572002844 572002847
-            571122642 571122640
-            571023664 571023672
-            570973958 570973126
-            570949308 570949309
-            570722427 570722425
-            570685355 570685354
-            570516291 570516288
-            570484202
-            570467061
-            570452161
-          )
-          for id in "${ids[@]}"; do
-            gh api --method DELETE "/repos/${{ github.repository }}/releases/assets/$id"
-          done
-
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: lua-lint
