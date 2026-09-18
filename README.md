@@ -255,7 +255,7 @@ Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de rel
 
 Le tag de release doit correspondre **exactement** à `v<VERSION>-alpha` (par exemple `v0.4.16-alpha` pour `VERSION=0.4.16`). Un tag stable, beta ou portant un suffixe différent est refusé par le build. Seul le job de release reçoit `contents: write`.
 
-Le workflow ne remplace jamais les assets d'une release déjà existante. Cette politique évite l'écrasement accidentel, mais ne doit pas être confondue avec la fonctionnalité GitHub « immutable releases » : la release elle-même n'est pas déclarée immuable par GitHub.
+Le workflow ne remplace jamais les assets d'une release déjà existante. Après une publication réussie, il conserve les anciennes releases/tags et leurs notes mais supprime automatiquement leurs assets `LotroPresence-win-x64.zip` et `.sha256`, afin que seul le dernier binaire reste stocké. Les autres assets éventuels ne sont pas touchés.
 
 Chaque release contient un fichier `.sha256` permettant de vérifier l'intégrité du téléchargement. Le ZIP contient aussi `VERSION`, `README.md` et `NOTICE.md`.
 
