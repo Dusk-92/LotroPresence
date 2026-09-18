@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.13";
+local VERSION = "0.4.14";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -306,25 +306,30 @@ local function extractRegionFromChatMessage(message)
     return extractRegionFromDescriptor(descriptor);
 end
 
-local function addChatHandler(handler)
-    if type(Turbine.Chat.Received) == "table" then
-        table.insert(Turbine.Chat.Received, handler);
-    elseif type(Turbine.Chat.Received) == "function" then
-        Turbine.Chat.Received = { Turbine.Chat.Received, handler };
-    else
-        Turbine.Chat.Received = { handler };
-    end
-end
+-- LOTRO expose Turbine.Chat.Received comme un handler unique. Beaucoup de
+-- plugins (dont BirdingLog/FishingLog) chaînent ce handler en mémorisant
+-- l'ancien puis en l'appelant comme une fonction. On fait pareil ici afin
+-- d'être compatible quel que soit l'ordre de chargement des plugins.
+local previousChatHandler = Turbine.Chat.Received;
+local chatHandlerEnabled = true;
+local chainedChatHandler = nil;
 
-local function removeChatHandler(handler)
-    if type(Turbine.Chat.Received) == "table" then
-        for index = table.getn(Turbine.Chat.Received), 1, -1 do
-            if Turbine.Chat.Received[index] == handler then
-                table.remove(Turbine.Chat.Received, index);
+local function callPreviousChatHandler(sender, args)
+    if type(previousChatHandler) == "function" then
+        return previousChatHandler(sender, args);
+    end
+
+    -- Compatibilité avec une ancienne version de LotroPresence ou un plugin
+    -- qui aurait installé une table de callbacks.
+    if type(previousChatHandler) == "table" then
+        local result = nil;
+        for index = 1, table.getn(previousChatHandler) do
+            local callback = previousChatHandler[index];
+            if type(callback) == "function" then
+                result = callback(sender, args);
             end
         end
-    elseif Turbine.Chat.Received == handler then
-        Turbine.Chat.Received = nil;
+        return result;
     end
 end
 
@@ -614,7 +619,17 @@ saveFinalInactiveSnapshot = function()
     end
 end
 
-addChatHandler(onChatReceived);
+chainedChatHandler = function(sender, args)
+    local result = callPreviousChatHandler(sender, args);
+
+    if chatHandlerEnabled then
+        onChatReceived(sender, args);
+    end
+
+    return result;
+end;
+
+Turbine.Chat.Received = chainedChatHandler;
 
 timer:SetWantsUpdates(true);
 timer.Update = function(sender, args)
@@ -632,7 +647,15 @@ saveSnapshot(true, true);
 if plugin ~= nil then
     plugin.Unload = function()
         timer:SetWantsUpdates(false);
-        removeChatHandler(onChatReceived);
+        chatHandlerEnabled = false;
+
+        -- Si personne ne s'est branché après nous, on restaure l'ancien
+        -- handler. Si un autre plugin nous a déjà encapsulés, on reste dans la
+        -- chaîne mais inactif afin de ne pas casser son chaînage.
+        if Turbine.Chat.Received == chainedChatHandler then
+            Turbine.Chat.Received = previousChatHandler;
+        end
+
         saveFinalInactiveSnapshot();
     end;
 end
