@@ -185,7 +185,7 @@ local function addChatHandler(handler)
     elseif type(Turbine.Chat.Received) == "function" then
         Turbine.Chat.Received = { Turbine.Chat.Received, handler };
     else
-        Turbine.Chat.Received = handler;
+        Turbine.Chat.Received = { handler };
     end
 end
 
