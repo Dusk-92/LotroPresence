@@ -53,9 +53,9 @@ try {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ExpectedTag)) {
-        $Pattern = '^v' + [regex]::Escape($Version) + '($|-)'
-        if ($ExpectedTag -notmatch $Pattern) {
-            throw "Le tag $ExpectedTag ne correspond pas à VERSION=$Version."
+        $ExpectedReleaseTag = "v$Version-alpha"
+        if ($ExpectedTag -cne $ExpectedReleaseTag) {
+            throw "Tag de release invalide : '$ExpectedTag', attendu exactement '$ExpectedReleaseTag'."
         }
     }
 
