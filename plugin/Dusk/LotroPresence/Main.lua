@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.11";
+local VERSION = "0.4.12";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -20,6 +20,7 @@ local unloading = false;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
 local currentRegion = "";
+local roleplayRegionDetected = false;
 local warnedUnrecognizedRegionalMessage = false;
 
 local function addEnumName(map, enumTable, key, label)
@@ -102,12 +103,21 @@ local function trim(value)
     return text;
 end
 
--- Seul le canal Régional est utilisé comme source de localisation.
--- Les canaux Jeu de rôle / RdC / Commerce / Monde peuvent avoir une portée
--- différente et ne doivent pas écraser la région détectée.
+-- Priorité de localisation :
+-- 1. Jeu de rôle : grande région canonique (ex. Pays de Bree, Hauts du Nord)
+-- 2. Régional : secours tant qu'aucun canal Jeu de rôle n'a été détecté
+-- Les canaux RdC / Commerce / Monde ne servent jamais à la localisation.
 local regionalChannelLabels = {
     ["regional"] = true,
     ["régional"] = true
+};
+
+local roleplayChannelLabels = {
+    ["roleplay"] = true,
+    ["role play"] = true,
+    ["rp"] = true,
+    ["jeu de rôle"] = true,
+    ["jeu de role"] = true
 };
 
 local function normalizeChannelLabel(value)
@@ -124,6 +134,10 @@ end
 
 local function isRegionalChannelLabel(value)
     return regionalChannelLabels[normalizeChannelLabel(value)] == true;
+end
+
+local function isRoleplayChannelLabel(value)
+    return roleplayChannelLabels[normalizeChannelLabel(value)] == true;
 end
 
 local entryPrefixes = {
@@ -202,21 +216,35 @@ local function extractRegionFromDescriptor(descriptor)
     left = trim(left);
     right = trim(right);
 
+    if isRoleplayChannelLabel(right) and not isRoleplayChannelLabel(left) then
+        local region = stripEntryPrefix(left);
+        if region ~= "" then
+            return region, "roleplay";
+        end
+    end
+
+    if isRoleplayChannelLabel(left) and not isRoleplayChannelLabel(right) then
+        local region = stripEntryPrefix(right);
+        if region ~= "" then
+            return region, "roleplay";
+        end
+    end
+
     if isRegionalChannelLabel(right) and not isRegionalChannelLabel(left) then
         local region = stripEntryPrefix(left);
         if region ~= "" then
-            return region;
+            return region, "regional";
         end
     end
 
     if isRegionalChannelLabel(left) and not isRegionalChannelLabel(right) then
         local region = stripEntryPrefix(right);
         if region ~= "" then
-            return region;
+            return region, "regional";
         end
     end
 
-    return nil;
+    return nil, nil;
 end
 
 local function extractRegionFromChatMessage(message)
@@ -225,24 +253,32 @@ local function extractRegionFromChatMessage(message)
         return nil;
     end
 
-    -- Format FR observé directement en jeu :
+    -- Formats FR observés directement en jeu :
+    -- "Canal Hauts du Nord - Jeu de rôle : connexion."
     -- "Canal Bree - Régional : connexion."
-    -- On le traite en priorité car c'est le signal le plus fiable sur client FR.
-    local frenchRegion = string.match(
+    local frenchRoleplayRegion = string.match(
+        message,
+        "^[Cc]anal%s+(.+)%s+%-%s+[Jj]eu de rôle%s*:%s*[Cc]onnexion[%.!]*$"
+    );
+    if frenchRoleplayRegion ~= nil and trim(frenchRoleplayRegion) ~= "" then
+        return trim(frenchRoleplayRegion), "roleplay";
+    end
+
+    local frenchRegionalRegion = string.match(
         message,
         "^[Cc]anal%s+(.+)%s+%-%s+[Rr]égional%s*:%s*[Cc]onnexion[%.!]*$"
     );
-    if frenchRegion ~= nil and trim(frenchRegion) ~= "" then
-        return trim(frenchRegion);
+    if frenchRegionalRegion ~= nil and trim(frenchRegionalRegion) ~= "" then
+        return trim(frenchRegionalRegion), "regional";
     end
 
     -- Format anglais observé par d'autres plugins LOTRO :
     -- "Entered the Ered Luin - Regional channel."
     -- Le parseur général ci-dessous accepte aussi des variantes proches,
     -- mais uniquement si le descripteur correspond au canal Régional.
-    local region = extractRegionFromDescriptor(message);
+    local region, source = extractRegionFromDescriptor(message);
     if region ~= nil then
-        return region;
+        return region, source;
     end
 
     -- Quelques clients/localisations peuvent placer "channel/canal" ailleurs.
@@ -298,13 +334,26 @@ local function onChatReceived(sender, args)
     end
 
     local message = args.Message;
-    local region = extractRegionFromChatMessage(message);
+    local region, source = extractRegionFromChatMessage(message);
     if region ~= nil and region ~= "" then
+        -- Dès qu'un canal Jeu de rôle est disponible, il devient la source
+        -- autoritaire pour toute la session. Régional reste uniquement un
+        -- secours pour les clients/personnages où Jeu de rôle n'apparaît pas.
+        if source == "regional" and roleplayRegionDetected then
+            return;
+        end
+
+        if source == "roleplay" then
+            roleplayRegionDetected = true;
+        end
+
         if region ~= currentRegion then
             currentRegion = region;
             pcall(function()
+                local sourceLabel = source == "roleplay" and "Jeu de rôle" or "Régional";
                 Turbine.Shell.WriteLine(
-                    "LotroPresence : région détectée : " .. tostring(region)
+                    "LotroPresence : région détectée : " ..
+                    tostring(region) .. " (" .. sourceLabel .. ")"
                 );
             end);
         end
