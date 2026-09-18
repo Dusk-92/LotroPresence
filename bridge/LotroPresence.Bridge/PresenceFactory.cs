@@ -98,13 +98,10 @@ internal static class PresenceFactory
 
     internal static string BuildState(PresenceSnapshot snapshot)
     {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(snapshot.Region))
+        var parts = new List<string>
         {
-            parts.Add(snapshot.Region);
-        }
-
-        parts.Add(snapshot.PartySize > 1 ? $"Communauté de {snapshot.PartySize}" : "Solo");
+            snapshot.PartySize > 1 ? $"Communauté de {snapshot.PartySize}" : "Solo"
+        };
         if (!string.IsNullOrWhiteSpace(snapshot.ServerName))
         {
             parts.Add($"Serveur {snapshot.ServerName}");
@@ -129,7 +126,6 @@ internal static class PresenceFactory
             snapshot.RaceName,
             snapshot.PartySize,
             snapshot.Active,
-            snapshot.Region,
             snapshot.ServerName);
 
     internal static string Limit(string text, int maxLength) =>
