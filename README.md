@@ -30,7 +30,7 @@ LotroPresence affiche automatiquement :
 - durée de session LOTRO continue, sans remise à zéro lors d'un changement de personnage
 - icône Discord de la classe active ou de la sélection de personnage
 
-La région est détectée passivement à partir des messages de connexion aux canaux LOTRO. **Jeu de rôle est prioritaire** car il fournit la grande région canonique : `Canal Hauts du Nord - Jeu de rôle : connexion.` donne `Hauts du Nord`, et `Canal Pays de Bree - Jeu de rôle : connexion.` donne `Pays de Bree`. Le canal **Régional** (`Canal Bree - Régional : connexion.`) sert uniquement de secours tant qu'aucun canal Jeu de rôle n'a été détecté. RdC, Commerce et Monde ne servent jamais à la localisation. Aucun `/loc`, `/who`, clic ou automatisation d'action en jeu n'est nécessaire.
+La région est détectée passivement à partir des messages de connexion aux canaux LOTRO, quel que soit leur `ChatType`. **Jeu de rôle est prioritaire** car il fournit la grande région canonique : `Canal Hauts du Nord - Jeu de rôle : connexion.` donne `Hauts du Nord`, et `Canal Pays de Bree - Jeu de rôle : connexion.` donne `Pays de Bree`. Le canal **Régional** (`Canal Bree - Régional : connexion.`) sert uniquement de secours tant qu'aucun canal Jeu de rôle n'a été détecté. RdC, Commerce et Monde ne servent jamais à la localisation. Aucun `/loc`, `/who`, clic ou automatisation d'action en jeu n'est nécessaire.
 
 La valeur correspond à la région de chat (par exemple **Hauts du Nord**), pas forcément à une petite sous-zone comme Nan Wathren. Lorsqu'une région est reconnue, le plugin affiche `LotroPresence : région détectée : ...` dans le chat. Si un message régional n'est pas compris, la version alpha l'affiche une seule fois pour faciliter le diagnostic. La dernière région connue du personnage est conservée entre les chargements.
 
@@ -256,7 +256,7 @@ Les pushes ordinaires sur `main` et les pull requests exécutent le même script
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release reconstruit et reteste lui-même exactement le tag avant publication ; il ne réutilise pas un binaire produit par un autre job.
 
-Le tag doit correspondre à la version déclarée dans `VERSION` (par exemple `v0.4.12-alpha` pour la version `0.4.12`). Seul le job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `VERSION` (par exemple `v0.4.13-alpha` pour la version `0.4.13`). Seul le job de release reçoit `contents: write`.
 
 Le workflow ne remplace jamais les assets d'une release déjà existante. Cette politique évite l'écrasement accidentel, mais ne doit pas être confondue avec la fonctionnalité GitHub « immutable releases » : la release elle-même n'est pas déclarée immuable par GitHub.
 
