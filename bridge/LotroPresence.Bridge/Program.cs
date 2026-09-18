@@ -167,10 +167,10 @@ internal static class Program
         {
             var beorning = new PresenceSnapshot(
                 "test", 4, "Heimvald", 28, 214, "Béornide",
-                114, "Béornide", 1, true, "Orcrist");
+                114, "Béornide", 1, true, "Hauts du Nord", "Orcrist");
             var champion = new PresenceSnapshot(
                 "test", 4, "Altherian", 28, 172, "Champion",
-                23, "Homme", 1, true, "Orcrist");
+                23, "Homme", 1, true, string.Empty, "Orcrist");
             var start = new DateTime(638000000000000000, DateTimeKind.Utc);
             var selection = PresenceFactory.BuildSelectionPresence(new BridgeConfig(), start);
             var mergedConfig = new BridgeConfig
@@ -191,7 +191,7 @@ internal static class Program
 
             var ok =
                 PresenceFactory.BuildDetails(beorning) == "Heimvald • Béornide • Niveau 28" &&
-                PresenceFactory.BuildState(beorning) == "Solo • Serveur Orcrist" &&
+                PresenceFactory.BuildState(beorning) == "Hauts du Nord • Solo • Serveur Orcrist" &&
                 PresenceFactory.GetClassAssetKey(beorning.ClassName) == "class_beorning" &&
                 PresenceFactory.BuildDetails(champion) == "Altherian • Homme • Champion • Niveau 28" &&
                 PresenceFactory.BuildState(champion) == "Solo • Serveur Orcrist" &&
