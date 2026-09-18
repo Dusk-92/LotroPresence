@@ -44,13 +44,6 @@ jobs:
         shell: pwsh
         run: ./build/Build-LotroPresence.ps1
 
-
-
-
-
-
-
-
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: lua-lint
