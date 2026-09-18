@@ -14,6 +14,7 @@ internal sealed record PresenceSnapshot(
     string RaceName,
     int PartySize,
     bool Active,
+    string Region,
     string ServerName);
 
 internal static class PluginDataReader
@@ -238,6 +239,7 @@ internal static class PluginDataReader
                 GetString(values, "raceName"),
                 Math.Max(1, GetInt(values, "partySize")),
                 GetBool(values, "active"),
+                GetString(values, "region"),
                 GetServerNameFromCharacterPath(path, character));
         }
         catch (IOException)
