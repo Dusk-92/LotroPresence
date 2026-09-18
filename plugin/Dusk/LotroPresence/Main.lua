@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.12";
+local VERSION = "0.4.13";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -329,7 +329,7 @@ local function removeChatHandler(handler)
 end
 
 local function onChatReceived(sender, args)
-    if args == nil or args.ChatType ~= Turbine.ChatType.Standard then
+    if args == nil then
         return;
     end
 
@@ -353,7 +353,8 @@ local function onChatReceived(sender, args)
                 local sourceLabel = source == "roleplay" and "Jeu de rôle" or "Régional";
                 Turbine.Shell.WriteLine(
                     "LotroPresence : région détectée : " ..
-                    tostring(region) .. " (" .. sourceLabel .. ")"
+                    tostring(region) .. " (" .. sourceLabel ..
+                    ", ChatType=" .. tostring(args.ChatType) .. ")"
                 );
             end);
         end
