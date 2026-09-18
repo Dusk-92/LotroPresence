@@ -61,6 +61,9 @@ internal static class Program
             FileInfo? selectedFile = null;
             string? lastPresenceKey = null;
             var nextDiscoveryUtc = DateTime.MinValue;
+            var selectedWriteTimeUtc = DateTime.MinValue;
+            long selectedLength = -1;
+            PresenceSnapshot? selectedSnapshot = null;
             var presenceVisible = false;
 
             try
@@ -76,6 +79,12 @@ internal static class Program
                             lastPresenceKey = null;
                         }
 
+                        selectedFile = null;
+                        nextDiscoveryUtc = DateTime.MinValue;
+                        selectedWriteTimeUtc = DateTime.MinValue;
+                        selectedLength = -1;
+                        selectedSnapshot = null;
+
                         await Delay(config.PollIntervalMilliseconds);
                         continue;
                     }
@@ -84,7 +93,10 @@ internal static class Program
                     var snapshot = PluginDataReader.ReadSelectedSnapshot(
                         ref selectedFile,
                         ref nextDiscoveryUtc,
-                        config.HeartbeatTimeoutSeconds);
+                        config.HeartbeatTimeoutSeconds,
+                        ref selectedWriteTimeUtc,
+                        ref selectedLength,
+                        ref selectedSnapshot);
 
                     if (nowUtc >= nextDiscoveryUtc)
                     {
@@ -95,6 +107,12 @@ internal static class Program
                         if (discovered is not null)
                         {
                             selectedFile = new FileInfo(discovered.FilePath);
+                            selectedFile.Refresh();
+                            selectedWriteTimeUtc = selectedFile.Exists
+                                ? selectedFile.LastWriteTimeUtc
+                                : DateTime.MinValue;
+                            selectedLength = selectedFile.Exists ? selectedFile.Length : -1;
+                            selectedSnapshot = discovered;
                             snapshot = discovered;
                         }
 
