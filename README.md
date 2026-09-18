@@ -8,14 +8,14 @@ Béornide :
 
 ```text
 Heimvald • Béornide • Niveau 28
-Solo • Serveur Orcrist
+Hauts du Nord • Solo • Serveur Orcrist
 ```
 
 Autre race/classe :
 
 ```text
 Altherian • Homme • Champion • Niveau 28
-Solo • Serveur Orcrist
+Pays de Bree • Solo • Serveur Orcrist
 ```
 
 LotroPresence affiche automatiquement :
@@ -24,12 +24,15 @@ LotroPresence affiche automatiquement :
 - classe
 - niveau
 - race
+- région courante lorsqu'elle est détectée
 - Solo ou Communauté de X
 - serveur
 - durée de session LOTRO continue, sans remise à zéro lors d'un changement de personnage
 - icône Discord de la classe active ou de la sélection de personnage
 
-La zone n'est volontairement pas utilisée : l'API Lua LOTRO ne fournit pas une zone courante fiable et automatique.
+La région est détectée passivement à partir des messages système de changement de canaux régionaux de LOTRO. Aucun `/loc`, `/who`, clic ou automatisation d'action en jeu n'est nécessaire.
+
+La valeur correspond à la région de chat (par exemple **Hauts du Nord**), pas forcément à une petite sous-zone comme Nan Wathren. Si aucun message exploitable n'a encore été reçu, la dernière région connue du personnage est conservée ; à défaut, la région est simplement omise jusqu'au prochain changement détecté.
 
 ### Règle spéciale Béornide
 
@@ -37,7 +40,7 @@ Le Béornide étant déjà affiché comme classe, sa race n'est pas répétée s
 
 ```text
 Heimvald • Béornide • Niveau 28
-Solo • Serveur Orcrist
+Hauts du Nord • Solo • Serveur Orcrist
 ```
 
 ## Architecture
@@ -185,7 +188,7 @@ Plusieurs clients LOTRO simultanés ne sont pas associés individuellement à un
 
 ### Données envoyées à Discord
 
-LotroPresence transmet localement au client Discord uniquement les informations nécessaires à la Rich Presence : nom du personnage, race, classe, niveau, statut Solo/Communauté, serveur, timer de session et clés d'assets Discord. Leur visibilité finale dépend des paramètres de confidentialité et d'activité du compte Discord.
+LotroPresence transmet localement au client Discord uniquement les informations nécessaires à la Rich Presence : nom du personnage, race, classe, niveau, région détectée, statut Solo/Communauté, serveur, timer de session et clés d'assets Discord. Leur visibilité finale dépend des paramètres de confidentialité et d'activité du compte Discord.
 
 LotroPresence n'exploite aucun serveur de télémétrie ou backend propre au projet.
 
@@ -233,7 +236,7 @@ Le projet `tests/LotroPresence.Tests` couvre notamment :
 - les 12 mappings d'icônes de classes
 - état de sélection sans doublon du nom du jeu
 - surcharge et validation de `config.json`
-- parsing PluginData
+- parsing PluginData, dont la région
 - déduction stricte du serveur
 - rejet d'un PluginData surdimensionné
 - tolérance d'horloge et expiration
@@ -253,7 +256,7 @@ Les pushes ordinaires sur `main` et les pull requests exécutent le même script
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release reconstruit et reteste lui-même exactement le tag avant publication ; il ne réutilise pas un binaire produit par un autre job.
 
-Le tag doit correspondre à la version déclarée dans `VERSION` (par exemple `v0.4.8-alpha` pour la version `0.4.8`). Seul le job de release reçoit `contents: write`.
+Le tag doit correspondre à la version déclarée dans `VERSION` (par exemple `v0.4.9-alpha` pour la version `0.4.9`). Seul le job de release reçoit `contents: write`.
 
 Le workflow ne remplace jamais les assets d'une release déjà existante. Cette politique évite l'écrasement accidentel, mais ne doit pas être confondue avec la fonctionnalité GitHub « immutable releases » : la release elle-même n'est pas déclarée immuable par GitHub.
 

@@ -27,18 +27,18 @@ internal static class TestProgram
     private static void TestPresenceFormatting()
     {
         var beorning = Snapshot(
-            "Heimvald", 28, "Béornide", "Béornide", 1, "Orcrist");
+            "Heimvald", 28, "Béornide", "Béornide", 1, "Hauts du Nord", "Orcrist");
         Equal(
             "Heimvald • Béornide • Niveau 28",
             PresenceFactory.BuildDetails(beorning),
             "format Béornide sans race dupliquée");
         Equal(
-            "Solo • Serveur Orcrist",
+            "Hauts du Nord • Solo • Serveur Orcrist",
             PresenceFactory.BuildState(beorning),
-            "état solo");
+            "état solo avec région");
 
         var champion = Snapshot(
-            "Altherian", 28, "Champion", "Homme", 4, "Orcrist");
+            "Altherian", 28, "Champion", "Homme", 4, string.Empty, "Orcrist");
         Equal(
             "Altherian • Homme • Champion • Niveau 28",
             PresenceFactory.BuildDetails(champion),
@@ -160,6 +160,7 @@ internal static class TestProgram
             Equal("Altherian", parsed?.Character, "nom PluginData");
             Equal("Orcrist", parsed?.ServerName, "serveur dérivé du chemin strict");
             Equal("Champion", parsed?.ClassName, "classe PluginData");
+            Equal("Hauts du Nord", parsed?.Region, "région PluginData");
             Check(parsed?.Active == true, "flag active lu");
 
             var latest = PluginDataReader.FindLatestActiveSnapshot(root, 50);
@@ -218,14 +219,15 @@ internal static class TestProgram
         string className,
         string raceName,
         int partySize,
+        string region,
         string server) =>
-        new("test", 4, character, level, 0, className, 0, raceName, partySize, true, server);
+        new("test", 4, character, level, 0, className, 0, raceName, partySize, true, region, server);
 
     private static string SnapshotText(string character, bool active) =>
         $$"""
         return {
             ["schemaVersion"] = 4,
-            ["pluginVersion"] = "0.4.8",
+            ["pluginVersion"] = "0.4.9",
             ["active"] = {{active.ToString().ToLowerInvariant()}},
             ["heartbeat"] = 123,
             ["character"] = "{{character}}",
@@ -234,7 +236,8 @@ internal static class TestProgram
             ["className"] = "Champion",
             ["raceId"] = 23,
             ["raceName"] = "Homme",
-            ["partySize"] = 1
+            ["partySize"] = 1,
+            ["region"] = "Hauts du Nord"
         }
         """;
 
