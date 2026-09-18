@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.9";
+local VERSION = "0.4.10";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -20,6 +20,7 @@ local unloading = false;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
 local currentRegion = "";
+local warnedUnrecognizedRegionalMessage = false;
 
 local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
@@ -124,16 +125,91 @@ local regionalChannelLabels = {
     ["sng"] = true
 };
 
-local function isRegionalChannelLabel(value)
+local function normalizeChannelLabel(value)
     local normalized = string.lower(trim(value));
-    return regionalChannelLabels[normalized] == true;
+    normalized = string.gsub(normalized, "[%.!]+$", "");
+    normalized = string.gsub(normalized, "%s+[Cc]hannel$", "");
+    normalized = string.gsub(normalized, "%s+[Cc]anal$", "");
+    normalized = string.gsub(normalized, "%s+[Kk]anal$", "");
+    normalized = string.gsub(normalized, "^[Cc]hannel%s+", "");
+    normalized = string.gsub(normalized, "^[Cc]anal%s+", "");
+    normalized = string.gsub(normalized, "^[Kk]anal%s+", "");
+    return trim(normalized);
+end
+
+local function isRegionalChannelLabel(value)
+    return regionalChannelLabels[normalizeChannelLabel(value)] == true;
+end
+
+local entryPrefixes = {
+    "^[Ee]ntered the%s+",
+    "^[Yy]ou have entered the%s+",
+    "^[Jj]oined the%s+",
+    "^[Vv]ous avez rejoint le canal%s+",
+    "^[Vv]ous avez rejoint%s+",
+    "^[Rr]ejoint le canal%s+",
+    "^[Rr]ejoint%s+",
+    "^[Ee]ntré dans le canal%s+",
+    "^[Ee]ntrée dans le canal%s+",
+    "^[Ee]ntré dans%s+",
+    "^[Ee]ntrée dans%s+",
+    "^[Vv]ous êtes entré dans le canal%s+",
+    "^[Vv]ous êtes entrée dans le canal%s+",
+    "^[Vv]ous êtes entré dans%s+",
+    "^[Vv]ous êtes entrée dans%s+",
+    "^[Kk]anal%s+",
+    "^[Dd]en Kanal%s+",
+    "^[Kk]anal betreten:%s*"
+};
+
+local function stripEntryPrefix(value)
+    local result = trim(value);
+
+    for index = 1, table.getn(entryPrefixes) do
+        local stripped, count = string.gsub(result, entryPrefixes[index], "", 1);
+        if count > 0 then
+            result = trim(stripped);
+            break;
+        end
+    end
+
+    -- Certaines localisations placent explicitement "canal/channel/kanal"
+    -- juste avant le nom de région.
+    local afterKeyword = string.match(result, ".*[Cc]anal%s+(.+)$");
+    if afterKeyword == nil then
+        afterKeyword = string.match(result, ".*[Cc]hannel%s+(.+)$");
+    end
+    if afterKeyword == nil then
+        afterKeyword = string.match(result, ".*[Kk]anal%s+(.+)$");
+    end
+    if afterKeyword ~= nil and trim(afterKeyword) ~= "" then
+        result = trim(afterKeyword);
+    end
+
+    return result;
+end
+
+local function isLeaveMessage(message)
+    local lowered = string.lower(message);
+
+    return string.find(lowered, "left the", 1, true) ~= nil or
+           string.find(lowered, "you have left", 1, true) ~= nil or
+           string.find(lowered, "quitt", 1, true) ~= nil or
+           string.find(lowered, "sorti du canal", 1, true) ~= nil or
+           string.find(lowered, "sortie du canal", 1, true) ~= nil or
+           string.find(lowered, "verlassen", 1, true) ~= nil;
 end
 
 local function extractRegionFromDescriptor(descriptor)
     descriptor = trim(descriptor);
     descriptor = string.gsub(descriptor, "[%.!]+$", "");
+    descriptor = string.gsub(descriptor, "%s+[Cc]hannel$", "");
+    descriptor = string.gsub(descriptor, "%s+[Cc]anal$", "");
+    descriptor = string.gsub(descriptor, "%s+[Kk]anal$", "");
 
-    local left, right = string.match(descriptor, "^(.-)%s+%-%s+(.+)$");
+    -- Le côté gauche est volontairement gourmand afin de couper sur le dernier
+    -- " - " : certains noms propres peuvent eux-mêmes contenir un tiret.
+    local left, right = string.match(descriptor, "^(.*)%s+%-%s+(.+)$");
     if left == nil or right == nil then
         return nil;
     end
@@ -142,11 +218,17 @@ local function extractRegionFromDescriptor(descriptor)
     right = trim(right);
 
     if isRegionalChannelLabel(right) and not isRegionalChannelLabel(left) then
-        return left;
+        local region = stripEntryPrefix(left);
+        if region ~= "" then
+            return region;
+        end
     end
 
     if isRegionalChannelLabel(left) and not isRegionalChannelLabel(right) then
-        return right;
+        local region = stripEntryPrefix(right);
+        if region ~= "" then
+            return region;
+        end
     end
 
     return nil;
@@ -154,19 +236,32 @@ end
 
 local function extractRegionFromChatMessage(message)
     message = trim(message);
-    if message == "" then
+    if message == "" or isLeaveMessage(message) then
         return nil;
     end
 
+    -- Format réellement émis par LOTRO :
+    -- "Entered the Ered Luin - Regional channel."
+    -- Le parseur général ci-dessous accepte aussi les équivalents localisés,
+    -- tant que le message contient "<région> - <nom du canal>".
+    local region = extractRegionFromDescriptor(message);
+    if region ~= nil then
+        return region;
+    end
+
+    -- Quelques clients/localisations peuvent placer "channel/canal" ailleurs.
     local descriptor = string.match(message, "^[Ee]ntered the%s+(.+)%s+channel[%.!]*$");
     if descriptor == nil then
         descriptor = string.match(message, "^[Yy]ou have entered the%s+(.+)%s+channel[%.!]*$");
     end
     if descriptor == nil then
-        descriptor = string.match(message, "^[Cc]anal%s+(.+)%s+rejoint[%.!]*$");
+        descriptor = string.match(message, "^[Vv]ous avez rejoint le canal%s+(.+)[%.!]*$");
     end
     if descriptor == nil then
-        descriptor = string.match(message, "^[Vv]ous avez rejoint le canal%s+(.+)[%.!]*$");
+        descriptor = string.match(message, "^[Ee]ntré dans le canal%s+(.+)[%.!]*$");
+    end
+    if descriptor == nil then
+        descriptor = string.match(message, "^[Ee]ntrée dans le canal%s+(.+)[%.!]*$");
     end
     if descriptor == nil then
         descriptor = string.match(message, "^[Kk]anal%s+(.+)%s+betreten[%.!]*$");
@@ -202,13 +297,37 @@ local function removeChatHandler(handler)
 end
 
 local function onChatReceived(sender, args)
-    if args == nil then
+    if args == nil or args.ChatType ~= Turbine.ChatType.Standard then
         return;
     end
 
-    local region = extractRegionFromChatMessage(args.Message);
+    local message = args.Message;
+    local region = extractRegionFromChatMessage(message);
     if region ~= nil and region ~= "" then
-        currentRegion = region;
+        if region ~= currentRegion then
+            currentRegion = region;
+            pcall(function()
+                Turbine.Shell.WriteLine(
+                    "LotroPresence : région détectée : " .. tostring(region)
+                );
+            end);
+        end
+        return;
+    end
+
+    -- Diagnostic léger pour l'alpha : si LOTRO émet bien un message régional
+    -- mais dans une forme encore inconnue, on l'affiche une seule fois.
+    if not warnedUnrecognizedRegionalMessage and message ~= nil then
+        local lowered = string.lower(tostring(message));
+        if string.find(lowered, "regional", 1, true) ~= nil or
+           string.find(lowered, "régional", 1, true) ~= nil then
+            warnedUnrecognizedRegionalMessage = true;
+            pcall(function()
+                Turbine.Shell.WriteLine(
+                    "LotroPresence : message régional non reconnu : " .. tostring(message)
+                );
+            end);
+        end
     end
 end
 
