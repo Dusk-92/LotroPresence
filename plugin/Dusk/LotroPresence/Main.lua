@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.14";
+local VERSION = "0.4.15";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -19,9 +19,6 @@ local queuedSave = nil;
 local unloading = false;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
-local currentRegion = "";
-local roleplayRegionDetected = false;
-local warnedUnrecognizedRegionalMessage = false;
 
 local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
@@ -90,304 +87,6 @@ local function safeCall(fn, fallback)
         return value;
     end
     return fallback;
-end
-
-local function trim(value)
-    if value == nil then
-        return "";
-    end
-
-    local text = tostring(value);
-    text = string.gsub(text, "^%s+", "");
-    text = string.gsub(text, "%s+$", "");
-    return text;
-end
-
--- Priorité de localisation :
--- 1. Jeu de rôle : grande région canonique (ex. Pays de Bree, Hauts du Nord)
--- 2. Régional : secours tant qu'aucun canal Jeu de rôle n'a été détecté
--- Les canaux RdC / Commerce / Monde ne servent jamais à la localisation.
-local regionalChannelLabels = {
-    ["regional"] = true,
-    ["régional"] = true
-};
-
-local roleplayChannelLabels = {
-    ["roleplay"] = true,
-    ["role play"] = true,
-    ["rp"] = true,
-    ["jeu de rôle"] = true,
-    ["jeu de role"] = true
-};
-
-local function normalizeChannelLabel(value)
-    local normalized = string.lower(trim(value));
-    normalized = string.gsub(normalized, "[%.!]+$", "");
-    normalized = string.gsub(normalized, "%s+[Cc]hannel$", "");
-    normalized = string.gsub(normalized, "%s+[Cc]anal$", "");
-    normalized = string.gsub(normalized, "%s+[Kk]anal$", "");
-    normalized = string.gsub(normalized, "^[Cc]hannel%s+", "");
-    normalized = string.gsub(normalized, "^[Cc]anal%s+", "");
-    normalized = string.gsub(normalized, "^[Kk]anal%s+", "");
-    return trim(normalized);
-end
-
-local function isRegionalChannelLabel(value)
-    return regionalChannelLabels[normalizeChannelLabel(value)] == true;
-end
-
-local function isRoleplayChannelLabel(value)
-    return roleplayChannelLabels[normalizeChannelLabel(value)] == true;
-end
-
-local entryPrefixes = {
-    "^[Ee]ntered the%s+",
-    "^[Yy]ou have entered the%s+",
-    "^[Jj]oined the%s+",
-    "^[Vv]ous avez rejoint le canal%s+",
-    "^[Vv]ous avez rejoint%s+",
-    "^[Rr]ejoint le canal%s+",
-    "^[Rr]ejoint%s+",
-    "^[Ee]ntré dans le canal%s+",
-    "^[Ee]ntrée dans le canal%s+",
-    "^[Ee]ntré dans%s+",
-    "^[Ee]ntrée dans%s+",
-    "^[Vv]ous êtes entré dans le canal%s+",
-    "^[Vv]ous êtes entrée dans le canal%s+",
-    "^[Vv]ous êtes entré dans%s+",
-    "^[Vv]ous êtes entrée dans%s+",
-    "^[Kk]anal%s+",
-    "^[Dd]en Kanal%s+",
-    "^[Kk]anal betreten:%s*"
-};
-
-local function stripEntryPrefix(value)
-    local result = trim(value);
-
-    for index = 1, table.getn(entryPrefixes) do
-        local stripped, count = string.gsub(result, entryPrefixes[index], "", 1);
-        if count > 0 then
-            result = trim(stripped);
-            break;
-        end
-    end
-
-    -- Certaines localisations placent explicitement "canal/channel/kanal"
-    -- juste avant le nom de région.
-    local afterKeyword = string.match(result, ".*[Cc]anal%s+(.+)$");
-    if afterKeyword == nil then
-        afterKeyword = string.match(result, ".*[Cc]hannel%s+(.+)$");
-    end
-    if afterKeyword == nil then
-        afterKeyword = string.match(result, ".*[Kk]anal%s+(.+)$");
-    end
-    if afterKeyword ~= nil and trim(afterKeyword) ~= "" then
-        result = trim(afterKeyword);
-    end
-
-    return result;
-end
-
-local function isLeaveMessage(message)
-    local lowered = string.lower(message);
-
-    return string.find(lowered, "left the", 1, true) ~= nil or
-           string.find(lowered, "you have left", 1, true) ~= nil or
-           string.find(lowered, "quitt", 1, true) ~= nil or
-           string.find(lowered, "sorti du canal", 1, true) ~= nil or
-           string.find(lowered, "sortie du canal", 1, true) ~= nil or
-           string.find(lowered, "verlassen", 1, true) ~= nil;
-end
-
-local function extractRegionFromDescriptor(descriptor)
-    descriptor = trim(descriptor);
-    descriptor = string.gsub(descriptor, "[%.!]+$", "");
-    descriptor = string.gsub(descriptor, "%s+[Cc]hannel$", "");
-    descriptor = string.gsub(descriptor, "%s+[Cc]anal$", "");
-    descriptor = string.gsub(descriptor, "%s+[Kk]anal$", "");
-
-    -- Le côté gauche est volontairement gourmand afin de couper sur le dernier
-    -- " - " : certains noms propres peuvent eux-mêmes contenir un tiret.
-    local left, right = string.match(descriptor, "^(.*)%s+%-%s+(.+)$");
-    if left == nil or right == nil then
-        return nil;
-    end
-
-    left = trim(left);
-    right = trim(right);
-
-    if isRoleplayChannelLabel(right) and not isRoleplayChannelLabel(left) then
-        local region = stripEntryPrefix(left);
-        if region ~= "" then
-            return region, "roleplay";
-        end
-    end
-
-    if isRoleplayChannelLabel(left) and not isRoleplayChannelLabel(right) then
-        local region = stripEntryPrefix(right);
-        if region ~= "" then
-            return region, "roleplay";
-        end
-    end
-
-    if isRegionalChannelLabel(right) and not isRegionalChannelLabel(left) then
-        local region = stripEntryPrefix(left);
-        if region ~= "" then
-            return region, "regional";
-        end
-    end
-
-    if isRegionalChannelLabel(left) and not isRegionalChannelLabel(right) then
-        local region = stripEntryPrefix(right);
-        if region ~= "" then
-            return region, "regional";
-        end
-    end
-
-    return nil, nil;
-end
-
-local function extractRegionFromChatMessage(message)
-    message = trim(message);
-    if message == "" or isLeaveMessage(message) then
-        return nil;
-    end
-
-    -- Formats FR observés directement en jeu :
-    -- "Canal Hauts du Nord - Jeu de rôle : connexion."
-    -- "Canal Bree - Régional : connexion."
-    local frenchRoleplayRegion = string.match(
-        message,
-        "^[Cc]anal%s+(.+)%s+%-%s+[Jj]eu de rôle%s*:%s*[Cc]onnexion[%.!]*$"
-    );
-    if frenchRoleplayRegion ~= nil and trim(frenchRoleplayRegion) ~= "" then
-        return trim(frenchRoleplayRegion), "roleplay";
-    end
-
-    local frenchRegionalRegion = string.match(
-        message,
-        "^[Cc]anal%s+(.+)%s+%-%s+[Rr]égional%s*:%s*[Cc]onnexion[%.!]*$"
-    );
-    if frenchRegionalRegion ~= nil and trim(frenchRegionalRegion) ~= "" then
-        return trim(frenchRegionalRegion), "regional";
-    end
-
-    -- Format anglais observé par d'autres plugins LOTRO :
-    -- "Entered the Ered Luin - Regional channel."
-    -- Le parseur général ci-dessous accepte aussi des variantes proches,
-    -- mais uniquement si le descripteur correspond au canal Régional.
-    local region, source = extractRegionFromDescriptor(message);
-    if region ~= nil then
-        return region, source;
-    end
-
-    -- Quelques clients/localisations peuvent placer "channel/canal" ailleurs.
-    local descriptor = string.match(message, "^[Ee]ntered the%s+(.+)%s+channel[%.!]*$");
-    if descriptor == nil then
-        descriptor = string.match(message, "^[Yy]ou have entered the%s+(.+)%s+channel[%.!]*$");
-    end
-    if descriptor == nil then
-        descriptor = string.match(message, "^[Vv]ous avez rejoint le canal%s+(.+)[%.!]*$");
-    end
-    if descriptor == nil then
-        descriptor = string.match(message, "^[Ee]ntré dans le canal%s+(.+)[%.!]*$");
-    end
-    if descriptor == nil then
-        descriptor = string.match(message, "^[Ee]ntrée dans le canal%s+(.+)[%.!]*$");
-    end
-    if descriptor == nil then
-        descriptor = string.match(message, "^[Kk]anal%s+(.+)%s+betreten[%.!]*$");
-    end
-
-    if descriptor == nil then
-        return nil;
-    end
-
-    return extractRegionFromDescriptor(descriptor);
-end
-
--- LOTRO expose Turbine.Chat.Received comme un handler unique. Beaucoup de
--- plugins (dont BirdingLog/FishingLog) chaînent ce handler en mémorisant
--- l'ancien puis en l'appelant comme une fonction. On fait pareil ici afin
--- d'être compatible quel que soit l'ordre de chargement des plugins.
-local previousChatHandler = Turbine.Chat.Received;
-local chatHandlerEnabled = true;
-local chainedChatHandler = nil;
-
-local function callPreviousChatHandler(sender, args)
-    if type(previousChatHandler) == "function" then
-        return previousChatHandler(sender, args);
-    end
-
-    -- Compatibilité avec une ancienne version de LotroPresence ou un plugin
-    -- qui aurait installé une table de callbacks.
-    if type(previousChatHandler) == "table" then
-        local result = nil;
-        for index = 1, table.getn(previousChatHandler) do
-            local callback = previousChatHandler[index];
-            if type(callback) == "function" then
-                result = callback(sender, args);
-            end
-        end
-        return result;
-    end
-end
-
-local function onChatReceived(sender, args)
-    if args == nil then
-        return;
-    end
-
-    local message = args.Message;
-    local region, source = extractRegionFromChatMessage(message);
-    if region ~= nil and region ~= "" then
-        -- Dès qu'un canal Jeu de rôle est disponible, il devient la source
-        -- autoritaire pour toute la session. Régional reste uniquement un
-        -- secours pour les clients/personnages où Jeu de rôle n'apparaît pas.
-        if source == "regional" and roleplayRegionDetected then
-            return;
-        end
-
-        if source == "roleplay" then
-            roleplayRegionDetected = true;
-        end
-
-        if region ~= currentRegion then
-            currentRegion = region;
-            pcall(function()
-                local sourceLabel = source == "roleplay" and "Jeu de rôle" or "Régional";
-                Turbine.Shell.WriteLine(
-                    "LotroPresence : région détectée : " ..
-                    tostring(region) .. " (" .. sourceLabel ..
-                    ", ChatType=" .. tostring(args.ChatType) .. ")"
-                );
-            end);
-        end
-        return;
-    end
-
-    -- Diagnostic léger pour l'alpha : si LOTRO émet bien un message régional
-    -- mais dans une forme encore inconnue, on l'affiche une seule fois.
-    if not warnedUnrecognizedRegionalMessage and message ~= nil then
-        local lowered = string.lower(tostring(message));
-        if string.find(lowered, "regional", 1, true) ~= nil or
-           string.find(lowered, "régional", 1, true) ~= nil or
-           string.find(lowered, "canal ", 1, true) ~= nil then
-            warnedUnrecognizedRegionalMessage = true;
-            pcall(function()
-                Turbine.Shell.WriteLine(
-                    "LotroPresence : message régional non reconnu : " .. tostring(message)
-                );
-            end);
-        end
-    end
-end
-
-local previousData = safeCall(function()
-    return Turbine.PluginData.Load(Turbine.DataScope.Character, DATA_KEY);
-end, nil);
-if type(previousData) == "table" and type(previousData.region) == "string" then
-    currentRegion = trim(previousData.region);
 end
 
 local function warnUnknown(kind, id, warned)
@@ -490,8 +189,7 @@ local function buildSnapshot(active)
         className = className,
         raceId = raceId,
         raceName = raceName,
-        partySize = getPartySize(),
-        region = currentRegion
+        partySize = getPartySize()
     };
 end
 
@@ -504,8 +202,7 @@ local function fingerprint(data)
         tostring(data.className),
         tostring(data.raceId),
         tostring(data.raceName),
-        tostring(data.partySize),
-        tostring(data.region)
+        tostring(data.partySize)
     }, "|");
 end
 
@@ -619,18 +316,6 @@ saveFinalInactiveSnapshot = function()
     end
 end
 
-chainedChatHandler = function(sender, args)
-    local result = callPreviousChatHandler(sender, args);
-
-    if chatHandlerEnabled then
-        onChatReceived(sender, args);
-    end
-
-    return result;
-end;
-
-Turbine.Chat.Received = chainedChatHandler;
-
 timer:SetWantsUpdates(true);
 timer.Update = function(sender, args)
     local now = Turbine.Engine.GetGameTime();
@@ -647,15 +332,6 @@ saveSnapshot(true, true);
 if plugin ~= nil then
     plugin.Unload = function()
         timer:SetWantsUpdates(false);
-        chatHandlerEnabled = false;
-
-        -- Si personne ne s'est branché après nous, on restaure l'ancien
-        -- handler. Si un autre plugin nous a déjà encapsulés, on reste dans la
-        -- chaîne mais inactif afin de ne pas casser son chaînage.
-        if Turbine.Chat.Received == chainedChatHandler then
-            Turbine.Chat.Received = previousChatHandler;
-        end
-
         saveFinalInactiveSnapshot();
     end;
 end
