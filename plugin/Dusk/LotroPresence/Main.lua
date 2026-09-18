@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.8";
+local VERSION = "0.4.9";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -19,6 +19,7 @@ local queuedSave = nil;
 local unloading = false;
 local warnedUnknownClasses = {};
 local warnedUnknownRaces = {};
+local currentRegion = "";
 
 local function addEnumName(map, enumTable, key, label)
     if enumTable ~= nil and enumTable[key] ~= nil then
@@ -87,6 +88,135 @@ local function safeCall(fn, fallback)
         return value;
     end
     return fallback;
+end
+
+local function trim(value)
+    if value == nil then
+        return "";
+    end
+
+    local text = tostring(value);
+    text = string.gsub(text, "^%s+", "");
+    text = string.gsub(text, "%s+$", "");
+    return text;
+end
+
+local regionalChannelLabels = {
+    ["regional"] = true,
+    ["régional"] = true,
+    ["trade"] = true,
+    ["commerce"] = true,
+    ["advice"] = true,
+    ["conseil"] = true,
+    ["conseils"] = true,
+    ["rp"] = true,
+    ["jdr"] = true,
+    ["ooc"] = true,
+    ["hrp"] = true,
+    ["lff"] = true,
+    ["rdg"] = true,
+    ["looking for fellowship"] = true,
+    ["recherche de communauté"] = true,
+    ["recherche de communaute"] = true,
+    ["recherche de groupe"] = true,
+    ["handel"] = true,
+    ["beratung"] = true,
+    ["sng"] = true
+};
+
+local function isRegionalChannelLabel(value)
+    local normalized = string.lower(trim(value));
+    return regionalChannelLabels[normalized] == true;
+end
+
+local function extractRegionFromDescriptor(descriptor)
+    descriptor = trim(descriptor);
+    descriptor = string.gsub(descriptor, "[%.!]+$", "");
+
+    local left, right = string.match(descriptor, "^(.-)%s+%-%s+(.+)$");
+    if left == nil or right == nil then
+        return nil;
+    end
+
+    left = trim(left);
+    right = trim(right);
+
+    if isRegionalChannelLabel(right) and not isRegionalChannelLabel(left) then
+        return left;
+    end
+
+    if isRegionalChannelLabel(left) and not isRegionalChannelLabel(right) then
+        return right;
+    end
+
+    return nil;
+end
+
+local function extractRegionFromChatMessage(message)
+    message = trim(message);
+    if message == "" then
+        return nil;
+    end
+
+    local descriptor = string.match(message, "^[Ee]ntered the%s+(.+)%s+channel[%.!]*$");
+    if descriptor == nil then
+        descriptor = string.match(message, "^[Yy]ou have entered the%s+(.+)%s+channel[%.!]*$");
+    end
+    if descriptor == nil then
+        descriptor = string.match(message, "^[Cc]anal%s+(.+)%s+rejoint[%.!]*$");
+    end
+    if descriptor == nil then
+        descriptor = string.match(message, "^[Vv]ous avez rejoint le canal%s+(.+)[%.!]*$");
+    end
+    if descriptor == nil then
+        descriptor = string.match(message, "^[Kk]anal%s+(.+)%s+betreten[%.!]*$");
+    end
+
+    if descriptor == nil then
+        return nil;
+    end
+
+    return extractRegionFromDescriptor(descriptor);
+end
+
+local function addChatHandler(handler)
+    if type(Turbine.Chat.Received) == "table" then
+        table.insert(Turbine.Chat.Received, handler);
+    elseif type(Turbine.Chat.Received) == "function" then
+        Turbine.Chat.Received = { Turbine.Chat.Received, handler };
+    else
+        Turbine.Chat.Received = handler;
+    end
+end
+
+local function removeChatHandler(handler)
+    if type(Turbine.Chat.Received) == "table" then
+        for index = table.getn(Turbine.Chat.Received), 1, -1 do
+            if Turbine.Chat.Received[index] == handler then
+                table.remove(Turbine.Chat.Received, index);
+            end
+        end
+    elseif Turbine.Chat.Received == handler then
+        Turbine.Chat.Received = nil;
+    end
+end
+
+local function onChatReceived(sender, args)
+    if args == nil then
+        return;
+    end
+
+    local region = extractRegionFromChatMessage(args.Message);
+    if region ~= nil and region ~= "" then
+        currentRegion = region;
+    end
+end
+
+local previousData = safeCall(function()
+    return Turbine.PluginData.Load(Turbine.DataScope.Character, DATA_KEY);
+end, nil);
+if type(previousData) == "table" and type(previousData.region) == "string" then
+    currentRegion = trim(previousData.region);
 end
 
 local function warnUnknown(kind, id, warned)
@@ -189,7 +319,8 @@ local function buildSnapshot(active)
         className = className,
         raceId = raceId,
         raceName = raceName,
-        partySize = getPartySize()
+        partySize = getPartySize(),
+        region = currentRegion
     };
 end
 
@@ -202,7 +333,8 @@ local function fingerprint(data)
         tostring(data.className),
         tostring(data.raceId),
         tostring(data.raceName),
-        tostring(data.partySize)
+        tostring(data.partySize),
+        tostring(data.region)
     }, "|");
 end
 
@@ -316,6 +448,8 @@ saveFinalInactiveSnapshot = function()
     end
 end
 
+addChatHandler(onChatReceived);
+
 timer:SetWantsUpdates(true);
 timer.Update = function(sender, args)
     local now = Turbine.Engine.GetGameTime();
@@ -332,6 +466,7 @@ saveSnapshot(true, true);
 if plugin ~= nil then
     plugin.Unload = function()
         timer:SetWantsUpdates(false);
+        removeChatHandler(onChatReceived);
         saveFinalInactiveSnapshot();
     end;
 end
