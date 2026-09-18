@@ -42,7 +42,9 @@ jobs:
 
       - name: Build, audit, test and package
         shell: pwsh
-        run: ./build/Build-LotroPresence.ps1
+        run: |
+          $version = (Get-Content -Raw "VERSION").Trim()
+          ./build/Build-LotroPresence.ps1 -ExpectedTag "v$version-alpha"
 
 
   release:
