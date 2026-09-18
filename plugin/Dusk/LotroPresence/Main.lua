@@ -2,7 +2,7 @@ import "Turbine";
 import "Turbine.Gameplay";
 import "Turbine.UI";
 
-local VERSION = "0.4.10";
+local VERSION = "0.4.11";
 local DATA_KEY = "LotroPresence";
 local CHECK_INTERVAL = 2;
 local HEARTBEAT_INTERVAL = 20;
@@ -102,27 +102,12 @@ local function trim(value)
     return text;
 end
 
+-- Seul le canal Régional est utilisé comme source de localisation.
+-- Les canaux Jeu de rôle / RdC / Commerce / Monde peuvent avoir une portée
+-- différente et ne doivent pas écraser la région détectée.
 local regionalChannelLabels = {
     ["regional"] = true,
-    ["régional"] = true,
-    ["trade"] = true,
-    ["commerce"] = true,
-    ["advice"] = true,
-    ["conseil"] = true,
-    ["conseils"] = true,
-    ["rp"] = true,
-    ["jdr"] = true,
-    ["ooc"] = true,
-    ["hrp"] = true,
-    ["lff"] = true,
-    ["rdg"] = true,
-    ["looking for fellowship"] = true,
-    ["recherche de communauté"] = true,
-    ["recherche de communaute"] = true,
-    ["recherche de groupe"] = true,
-    ["handel"] = true,
-    ["beratung"] = true,
-    ["sng"] = true
+    ["régional"] = true
 };
 
 local function normalizeChannelLabel(value)
@@ -240,10 +225,21 @@ local function extractRegionFromChatMessage(message)
         return nil;
     end
 
-    -- Format réellement émis par LOTRO :
+    -- Format FR observé directement en jeu :
+    -- "Canal Bree - Régional : connexion."
+    -- On le traite en priorité car c'est le signal le plus fiable sur client FR.
+    local frenchRegion = string.match(
+        message,
+        "^[Cc]anal%s+(.+)%s+%-%s+[Rr]égional%s*:%s*[Cc]onnexion[%.!]*$"
+    );
+    if frenchRegion ~= nil and trim(frenchRegion) ~= "" then
+        return trim(frenchRegion);
+    end
+
+    -- Format anglais observé par d'autres plugins LOTRO :
     -- "Entered the Ered Luin - Regional channel."
-    -- Le parseur général ci-dessous accepte aussi les équivalents localisés,
-    -- tant que le message contient "<région> - <nom du canal>".
+    -- Le parseur général ci-dessous accepte aussi des variantes proches,
+    -- mais uniquement si le descripteur correspond au canal Régional.
     local region = extractRegionFromDescriptor(message);
     if region ~= nil then
         return region;
@@ -320,7 +316,8 @@ local function onChatReceived(sender, args)
     if not warnedUnrecognizedRegionalMessage and message ~= nil then
         local lowered = string.lower(tostring(message));
         if string.find(lowered, "regional", 1, true) ~= nil or
-           string.find(lowered, "régional", 1, true) ~= nil then
+           string.find(lowered, "régional", 1, true) ~= nil or
+           string.find(lowered, "canal ", 1, true) ~= nil then
             warnedUnrecognizedRegionalMessage = true;
             pcall(function()
                 Turbine.Shell.WriteLine(
