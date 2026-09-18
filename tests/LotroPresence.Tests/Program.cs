@@ -225,7 +225,7 @@ internal static class TestProgram
         $$"""
         return {
             ["schemaVersion"] = 4,
-            ["pluginVersion"] = "0.4.15",
+            ["pluginVersion"] = "0.4.16",
             ["active"] = {{active.ToString().ToLowerInvariant()}},
             ["heartbeat"] = 123,
             ["character"] = "{{character}}",

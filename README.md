@@ -253,7 +253,7 @@ Les pushes ordinaires sur `main` et les pull requests exécutent le même script
 
 Une release est créée uniquement lorsqu'un tag `v*` est poussé. Le job de release reconstruit et reteste lui-même exactement le tag avant publication ; il ne réutilise pas un binaire produit par un autre job.
 
-Le tag doit correspondre à la version déclarée dans `VERSION` (par exemple `v0.4.15-alpha` pour la version `0.4.15`). Seul le job de release reçoit `contents: write`.
+Le tag de release doit correspondre **exactement** à `v<VERSION>-alpha` (par exemple `v0.4.16-alpha` pour `VERSION=0.4.16`). Un tag stable, beta ou portant un suffixe différent est refusé par le build. Seul le job de release reçoit `contents: write`.
 
 Le workflow ne remplace jamais les assets d'une release déjà existante. Cette politique évite l'écrasement accidentel, mais ne doit pas être confondue avec la fonctionnalité GitHub « immutable releases » : la release elle-même n'est pas déclarée immuable par GitHub.
 
