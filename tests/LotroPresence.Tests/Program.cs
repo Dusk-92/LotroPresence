@@ -15,6 +15,7 @@ internal static class TestProgram
         TestSelectionPresence();
         TestConfigOverridesAndValidation();
         TestPluginDataParsingAndServerDetection();
+        TestSelectedSnapshotCaching();
         TestFreshnessTolerance();
         TestSteamArgumentPreservation();
 
@@ -186,6 +187,62 @@ internal static class TestProgram
         }
     }
 
+    private static void TestSelectedSnapshotCaching()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LotroPresenceTests", Guid.NewGuid().ToString("N"));
+        var character = Path.Combine(root, "Orcrist", "Altherian");
+        Directory.CreateDirectory(character);
+
+        try
+        {
+            var path = Path.Combine(character, "LotroPresence.plugindata");
+            File.WriteAllText(path, SnapshotText("Altherian", true, 28), Encoding.UTF8);
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(-2));
+
+            FileInfo? selectedFile = new(path);
+            var nextDiscoveryUtc = DateTime.MaxValue;
+            var selectedWriteTimeUtc = DateTime.MinValue;
+            long selectedLength = -1;
+            PresenceSnapshot? selectedSnapshot = null;
+
+            var first = PluginDataReader.ReadSelectedSnapshot(
+                ref selectedFile,
+                ref nextDiscoveryUtc,
+                50,
+                ref selectedWriteTimeUtc,
+                ref selectedLength,
+                ref selectedSnapshot);
+            var second = PluginDataReader.ReadSelectedSnapshot(
+                ref selectedFile,
+                ref nextDiscoveryUtc,
+                50,
+                ref selectedWriteTimeUtc,
+                ref selectedLength,
+                ref selectedSnapshot);
+
+            Check(first is not null, "snapshot sélectionné lu");
+            Check(ReferenceEquals(first, second), "snapshot inchangé servi depuis le cache");
+
+            File.WriteAllText(path, SnapshotText("Altherian", true, 29), Encoding.UTF8);
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(-1));
+
+            var third = PluginDataReader.ReadSelectedSnapshot(
+                ref selectedFile,
+                ref nextDiscoveryUtc,
+                50,
+                ref selectedWriteTimeUtc,
+                ref selectedLength,
+                ref selectedSnapshot);
+
+            Equal(29, third?.Level ?? 0, "cache invalidé après modification du PluginData");
+            Check(!ReferenceEquals(second, third), "snapshot modifié relu depuis le disque");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static void TestFreshnessTolerance()
     {
         var now = DateTime.UtcNow;
@@ -221,15 +278,15 @@ internal static class TestProgram
         string server) =>
         new("test", 4, character, level, 0, className, 0, raceName, partySize, true, server);
 
-    private static string SnapshotText(string character, bool active) =>
-        $$"""
+    private static string SnapshotText(string character, bool active, int level = 28) =>
+        $"""
         return {
             ["schemaVersion"] = 4,
-            ["pluginVersion"] = "0.4.16",
+            ["pluginVersion"] = "0.4.17",
             ["active"] = {{active.ToString().ToLowerInvariant()}},
             ["heartbeat"] = 123,
             ["character"] = "{{character}}",
-            ["level"] = 28,
+            ["level"] = {{level}},
             ["classId"] = 172,
             ["className"] = "Champion",
             ["raceId"] = 23,
