@@ -34,10 +34,14 @@ internal static class PluginDataReader
     internal static PresenceSnapshot? ReadSelectedSnapshot(
         ref FileInfo? selectedFile,
         ref DateTime nextDiscoveryUtc,
-        int timeoutSeconds)
+        int timeoutSeconds,
+        ref DateTime selectedWriteTimeUtc,
+        ref long selectedLength,
+        ref PresenceSnapshot? selectedSnapshot)
     {
         if (selectedFile is null)
         {
+            ResetSelectedCache(ref selectedWriteTimeUtc, ref selectedLength, ref selectedSnapshot);
             return null;
         }
 
@@ -48,10 +52,32 @@ internal static class PluginDataReader
             {
                 selectedFile = null;
                 nextDiscoveryUtc = DateTime.MinValue;
+                ResetSelectedCache(ref selectedWriteTimeUtc, ref selectedLength, ref selectedSnapshot);
                 return null;
             }
 
-            var snapshot = TryReadSnapshot(selectedFile.FullName);
+            var writeTimeUtc = selectedFile.LastWriteTimeUtc;
+            var length = selectedFile.Length;
+            var sameFile = selectedSnapshot is not null &&
+                           string.Equals(
+                               selectedSnapshot.FilePath,
+                               selectedFile.FullName,
+                               StringComparison.OrdinalIgnoreCase);
+            var unchanged = sameFile &&
+                            selectedWriteTimeUtc == writeTimeUtc &&
+                            selectedLength == length;
+
+            var snapshot = unchanged
+                ? selectedSnapshot
+                : TryReadSnapshot(selectedFile.FullName);
+
+            if (!unchanged)
+            {
+                selectedWriteTimeUtc = writeTimeUtc;
+                selectedLength = length;
+                selectedSnapshot = snapshot;
+            }
+
             if (snapshot is { Active: true })
             {
                 return snapshot;
@@ -66,7 +92,18 @@ internal static class PluginDataReader
 
         selectedFile = null;
         nextDiscoveryUtc = DateTime.MinValue;
+        ResetSelectedCache(ref selectedWriteTimeUtc, ref selectedLength, ref selectedSnapshot);
         return null;
+    }
+
+    private static void ResetSelectedCache(
+        ref DateTime selectedWriteTimeUtc,
+        ref long selectedLength,
+        ref PresenceSnapshot? selectedSnapshot)
+    {
+        selectedWriteTimeUtc = DateTime.MinValue;
+        selectedLength = -1;
+        selectedSnapshot = null;
     }
 
     internal static PresenceSnapshot? FindLatestActiveSnapshot(string root, int timeoutSeconds)
